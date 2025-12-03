@@ -1,3 +1,11 @@
+"""Drawing routines for the desk-style printable calendar pages.
+
+This module implements size constants and drawing helpers used to render a
+small desk calendar. It registers image-drawing handlers (via ImageDrawer)
+for the calendar model objects from lib.pycal so the calendar can be
+rendered to PIL images for preview or saving.
+"""
+
 import PIL.Image
 
 try:
@@ -20,6 +28,12 @@ _libdraw.Resolution.unit = _libdraw.Units.IN
 
 
 class DeskCalSize:
+    """Geometry constants for the desk calendar layout.
+
+    Values are expressed in drawing units (set by lib.print.draw.Resolution).
+    The class provides convenience methods that return BBox instances for
+    the image area, info area and calendar area used by the page layout.
+    """
     WIDTH = 7
     HEIGHT = 4.25
     TOP_PADDING = 0.25
@@ -43,6 +57,11 @@ class DeskCalSize:
 
     @staticmethod
     def cal_bbox() -> _libdraw.BBox:
+        """Return a BBox positioned inside the info region for the month grid.
+
+        The method centers the calendar grid inside the info area and returns
+        a moved BBox appropriate for pasting the calendar image.
+        """
         info_box = DeskCalSize.info_bbox()
         # Add Padding
         # .2in left
@@ -60,6 +79,12 @@ ImageDrawer = _libdraw.DrawDecoder()
 
 
 class DeskCalendarPage:
+    """Container for a single desk calendar page image.
+
+    Provides helpers to paste the cover image and the calendar grid onto a
+    page sized according to DeskCalSize. The underlying image object is an
+    instance of lib.print.draw.Image and is exposed via the `page` property.
+    """
     def __init__(self, page: PIL.Image.Image = None):
         self._width = DeskCalSize.WIDTH
         self._height = DeskCalSize.HEIGHT
@@ -84,6 +109,11 @@ class DeskCalendarPage:
         return self._page
 
     def set_image(self, image: str) -> None:
+        """Paste the provided image into the page's image area.
+
+        The image path is resolved via FilesManager and the image is resized
+        to exactly fill the configured image_bbox.
+        """
         pos = DeskCalSize.image_bbox()
 
         img_w = pos.width
@@ -96,6 +126,11 @@ class DeskCalendarPage:
         draw.paste(img, (pos.x, pos.y))
 
     def set_calendar(self, image: PIL.Image.Image) -> None:
+        """Paste a small calendar image into the info area of the page.
+
+        The provided image is resized to the calendar bbox and pasted onto the
+        page so it aligns with the descriptive text and title areas.
+        """
         if isinstance(image, _libdraw.Draw):
             image = image.image
         img_w = DeskCalSize.CAL_WIDTH
@@ -112,22 +147,11 @@ class DeskCalendarPage:
 
 @ImageDrawer.override(_libcal.FrontPage)
 def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image:
-    """
-    --------------------
-    |         |        |
-    |  Image  | Title  |
-    |         |        |
-    --------------------
-    Page Size: 
-        Width:  7
-        Height: 4.25
-    Padding: (0, .25)
-    Image Size:
-        Width: 4
-        Height: 4
-    Content Size:
-        Width: 3
-        Height: 4
+    """Draw the front (cover) page for the desk calendar.
+
+    The cover places the configured image on the left and centers the title
+    text in the info area on the right. Returns a PIL.Image instance ready
+    for saving or preview.
     """
     image_path = FilesManager.instance().get_file_path(self.image)
 
@@ -147,6 +171,11 @@ def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image:
 
 @ImageDrawer.override(_libcal.CalendarArt)
 def DrawArtPage(self: _libcal.CalendarArt) -> PIL.Image.Image:
+    """Draw an artwork page used between the cover and month grids.
+
+    The artwork fills the left side image area while a small title is drawn
+    on the right info area. Returns a PIL.Image instance.
+    """
     image_path = FilesManager.instance().get_file_path(self.image)
     if True:
         page = DeskCalendarPage()
@@ -186,6 +215,12 @@ def DrawArtPage(self: _libcal.CalendarArt) -> PIL.Image.Image:
 
 @ImageDrawer.override(_libcal.Month)
 def DrawMonth(self: _libcal.Month):
+    """Render the month grid into an image sized for the desk layout.
+
+    A new image is created for the month grid, the month name and weekday
+    headings are drawn, then each day number is placed into the grid
+    according to the Month.table provided by lib.pycal.
+    """
     # 2.6x2.6
     pos = DeskCalSize.cal_bbox()
 
@@ -235,6 +270,12 @@ def DrawMonth(self: _libcal.Month):
 
 @ImageDrawer.override(_libcal.Calendar)
 def DrawCalendar(self: _libcal.Calendar):
+    """Generate the sequence of page images that make up the calendar.
+
+    Yields PIL.Image objects: the cover page followed by each month page
+    as a DeskCalendarPage instance with the month grid pasted into the
+    artwork background.
+    """
     images = []
     img = ImageDrawer.draw(self.front_page)
     yield img

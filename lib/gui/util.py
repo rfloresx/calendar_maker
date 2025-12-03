@@ -1,3 +1,10 @@
+"""Utility GUI components and helpers used by the editor.
+
+This module provides small helper controls (ImageButton, Text, NumberText,
+ScrolledPanel), file chooser helpers and image metadata extraction used
+throughout the GUI.
+"""
+
 import wx
 import wx.lib.scrolledpanel as scrolled
 
@@ -16,6 +23,11 @@ import lib.pycal as libpycal
 
 
 def get_image_metadata(image: str) -> dict:
+    """Extract basic EXIF metadata (DateTimeOriginal, GPS) from an image file.
+
+    Returns a dictionary with any discovered keys. Best-effort: failures
+    return an empty dict instead of raising.
+    """
     import json
     import piexif
 
@@ -102,6 +114,11 @@ def get_image_metadata(image: str) -> dict:
 
 
 class ImageButton(wx.Button):
+    """Button control that displays an image and allows changing it.
+
+    The ImageButton stores the image filename and extracted metadata and
+    will copy selected images into the project via FilesManager.
+    """
     def __init__(self, image: str = None, *args, **kw):
         super().__init__(*args, **kw)
         self._size: Tuple[int, int] = kw.get('size')
@@ -124,11 +141,13 @@ class ImageButton(wx.Button):
         self.Bind(wx.EVT_BUTTON, self.on_set_image)
 
     def on_set_image(self, event) -> None:
+        """Open a file chooser to select a new image and set it."""
         path = OpenDialog.ChoseFile(self, "Choose Image", OpenDialog.IMAGES)
         if path:
             self.set_image(path)
 
     def set_image(self, filename: str) -> None:
+        """Set the control's image, copy it into the project and extract metadata."""
         print(f"Setting image: {filename}") 
         if filename is None:
             self.ResetBitmap()
@@ -156,13 +175,16 @@ class ImageButton(wx.Button):
 
     @property
     def metadata(self) -> dict:
+        """Return metadata dictionary extracted from the image (may be empty)."""
         return self._metadata
 
     @property
     def filename(self) -> str:
+        """Return current image filename (project path) or None."""
         return self._filename
 
     def ResetBitmap(self) -> None:
+        """Reset the button to an empty bitmap of the configured size."""
         bmp = wx.Bitmap(*self._size)
         self.SetBitmap(bmp)
 
@@ -187,6 +209,11 @@ class ImageButton(wx.Button):
 #             self.SetInsertionPointEnd()  # Move cursor to the end
 
 class Text(wx.TextCtrl):
+    """Small Text control that optionally limits the number of lines.
+
+    When attached inside a ScrolledPanel the mouse wheel will be propagated
+    to the parent scrolling container to enable expected scroll behavior.
+    """
     def __init__(self, value: str = None, lines: int = None, *args, **kw):
         if 'style' not in kw:
             kw['style'] = wx.TE_MULTILINE | wx.TE_NO_VSCROLL
@@ -218,6 +245,7 @@ class Text(wx.TextCtrl):
             self.SetInsertionPointEnd()  # Move cursor to the end
 
 class NumberText(Text):
+    """Text control that restricts input to a single integer and calls a callback."""
     def __init__(self, value :int = 0, on_change=None, *args, **kw):
         super().__init__(str(value), lines=1, *args, **kw)
         self._on_change = on_change
@@ -245,6 +273,11 @@ class NumberText(Text):
         super()._validate(event)
 
 class ScrolledPanel(scrolled.ScrolledPanel):
+    """Thin wrapper that makes adding/removing child widgets simpler.
+
+    Exposes Items(), Add(), Insert(), Sort(), Remove() and clear() helpers
+    operating on the underlying vertical sizer.
+    """
     def __init__(self, parent, *args, **kargs):
         super().__init__(parent, *args, **kargs)
         self.SetAutoLayout(1)
@@ -253,14 +286,17 @@ class ScrolledPanel(scrolled.ScrolledPanel):
         self.SetSizer(self._sizer)
 
     def Items(self) -> List[wx.Window]:
+        """Return the list of child window objects currently in the sizer."""
         return [item.GetWindow() for item in self._sizer.GetChildren()]
 
     def Insert(self, items: List[wx.Window]) -> None:
+        """Insert one or more windows into the sizer."""
         for item in items:
             self._sizer.Add(item)
         self.Refresh()
 
     def Add(self, item: wx.Window) -> None:
+        """Add a single window to the sizer and refresh the panel."""
         self._sizer.Add(item)
         self.Refresh()
 
@@ -270,10 +306,12 @@ class ScrolledPanel(scrolled.ScrolledPanel):
         self.SetupScrolling()
 
     def clear(self) -> None:
+        """Remove and destroy all child widgets from the sizer."""
         self._sizer.Clear(True)
         self.Refresh()
 
     def Sort(self, key) -> None:
+        """Sort child widgets in the sizer using the provided key function."""
         children: List[wx.SizerItem] = self._sizer.GetChildren()
         items = []
         for child in children:
@@ -287,6 +325,7 @@ class ScrolledPanel(scrolled.ScrolledPanel):
         self.Refresh()
 
     def Remove(self, item: wx.Window):
+        """Detach a child widget from the sizer without destroying it."""
         val = self._sizer.Detach(item)
 
 
@@ -300,6 +339,7 @@ class OpenDialog:
 
     @staticmethod
     def ChoseFile(parent, title, wildcard="", style=wx.FD_OPEN) -> str:
+        """Open a file chooser and return the selected path or None."""
         fileDialog: wx.FileDialog = None
         with wx.FileDialog(parent, title, wildcard=wildcard, style=style) as fileDialog:
             if fileDialog.ShowModal() == wx.ID_OK:
@@ -308,6 +348,7 @@ class OpenDialog:
 
     @staticmethod
     def ChoseFiles(parent, title, wildcard="", style=wx.FD_OPEN | wx.FD_MULTIPLE) -> List[str]:
+        """Open a multi-file chooser and return the selected paths or None."""
         fileDialog: wx.FileDialog = None
         with wx.FileDialog(parent, title, wildcard=wildcard, style=style) as fileDialog:
             if fileDialog.ShowModal() == wx.ID_OK:
@@ -316,6 +357,7 @@ class OpenDialog:
 
     @staticmethod
     def ChoseDir(parent, title, wildcard="", style=wx.DD_DEFAULT_STYLE) -> str:
+        """Open a directory chooser and return the selected path or None."""
         dirDialog: wx.DirDialog = None
         with wx.DirDialog(parent, title, wildcard=wildcard, style=style) as dirDialog:
             if dirDialog.ShowModal() == wx.ID_OK:

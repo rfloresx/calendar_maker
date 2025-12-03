@@ -1,3 +1,10 @@
+"""Birthday panel UI components.
+
+Provides wx based panels used to view and edit birthday entries. Public
+classes include BirthdayInfoPanel (single entry editor) and BirthdayPanel
+(collection of birthdays with import/sort helpers).
+"""
+
 try:
     import lib as __lib
 except:
@@ -18,6 +25,7 @@ from typing import List
 
 
 class AspectRations:
+    """Simple constants describing aspect ratios used by the UI."""
     # CELL=(14:10)
     CELL = (14, 10)
     CELL_SCALE = 15/10
@@ -30,6 +38,13 @@ class AspectRations:
 
 
 class BirthdayInfoPanel(wx.Panel):
+    """Panel representing a single birthday entry with image, title and date.
+
+    Public properties:
+        image: path to the selected image.
+        title: birthday title/summary.
+        date: selected date as datetime.datetime.
+    """
     def __init__(self, image: str = None, title: str = None, date: datetime.datetime = None, *args, **kw):
         super().__init__(*args, **kw)
 
@@ -64,6 +79,7 @@ class BirthdayInfoPanel(wx.Panel):
         self._sizer.Add(inputs_sizer, 0, wx.EXPAND | wx.ALL, 10)
 
     def on_delete(self, event: wx.Event):
+        """Handle deletion of this panel from its parent ScrolledPanel."""
         print(self.Parent, self)
         if self.Parent and isinstance(self.Parent, ScrolledPanel):
             panel: ScrolledPanel = self.Parent
@@ -73,36 +89,44 @@ class BirthdayInfoPanel(wx.Panel):
 
     @property
     def image(self) -> str:
+        """Return the path of the currently selected image (may be None)."""
         return self._image_ctrl.filename
 
     @property
     def title(self) -> str:
+        """Return the title/summary text for the birthday."""
         return self._title_ctrl.GetValue()
 
     @property
     def date(self) -> datetime.datetime:
+        """Return the selected date as a datetime.datetime instance."""
         wx_dt: wx.DateTime = self._date_ctrl.GetValue()
         return datetime.datetime(wx_dt.GetYear(), wx_dt.GetMonth() + 1, wx_dt.GetDay(),
                                  wx_dt.GetHour(), wx_dt.GetMinute(), wx_dt.GetSecond())
 
     def set_image(self, filename: str) -> None:
+        """Set the displayed image for this birthday entry."""
         self._image_ctrl.set_image(filename)
 
     def set_title(self, value: str) -> None:
+        """Set the title text for this birthday entry."""
         self._title_ctrl.SetValue(value)
 
     def set_date(self, date: str) -> None:
+        """Set the date control from a string in DD/MM/YYYY format."""
         date: datetime.datetime = datetime.datetime.strptime(date, "%d/%m/%Y")
 
         wdt = wx.DateTime(year=date.year, month=date.month-1, day=date.day)
         self._date_ctrl.SetValue(wdt)
 
     def load(self, data: dict) -> None:
+        """Load state from a dictionary produced by to_json."""
         self.set_image(data["image"])
         self.set_title(data["title"])
         self.set_date(data["date"])
 
     def to_json(self) -> dict:
+        """Return a JSON-serializable representation of this entry."""
         return {
             "image": FilesManager.instance().get_relative_path(self.image),
             "title": self.title,
@@ -111,6 +135,10 @@ class BirthdayInfoPanel(wx.Panel):
 
 
 class BirthdayPanel(wx.Panel):
+    """Panel that contains and manages multiple BirthdayInfoPanel entries.
+
+    Provides import from ICS, add, sort and serialization helpers.
+    """
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
         self._scrolling_panel: ScrolledPanel = ScrolledPanel(self)
@@ -135,6 +163,11 @@ class BirthdayPanel(wx.Panel):
         self._sizer.Add(self._scrolling_panel, 1, wx.EXPAND, 10)
 
     def add_birthday(self, image: str, title: str = None, date: datetime = None) -> None:
+        """Append a new BirthdayInfoPanel to the scrolling list.
+
+        If an image path is provided it will be added to the project via
+        FilesManager and the returned project path will be used.
+        """
         if image is not None:
             image = FilesManager.instance().add_file(image)
         panel = BirthdayInfoPanel(
@@ -144,6 +177,7 @@ class BirthdayPanel(wx.Panel):
         self.Refresh()
 
     def on_import_ics(self, event: wx.Event) -> None:
+        """Import birthdays from an .ics file and add them to the panel."""
         file = OpenDialog.ChoseFile(self, "Select File", OpenDialog.ICS)
         if file:
             vcal = libics.VCalendar(file)
@@ -155,12 +189,15 @@ class BirthdayPanel(wx.Panel):
             self.sort()
 
     def on_add_birthday(self, event: wx.Event) -> None:
+        """Handler invoked when the Add button is pressed; creates an empty entry."""
         self.add_birthday(image=None)
 
     def on_sort_birthday(self, event) -> None:
+        """Handler to trigger sorting of birthdays."""
         self.sort()
 
     def load(self, data: dict) -> None:
+        """Load birthdays from a dict produced by to_json."""
         # self._scrolling_panel.clear()
         for item in data["birthdays"]:
             panel = BirthdayInfoPanel(parent=self._scrolling_panel, image=None)
@@ -171,16 +208,20 @@ class BirthdayPanel(wx.Panel):
         self.Refresh()
 
     def to_json(self) -> dict:
+        """Serialize the contained birthdays to a dict suitable for JSON."""
         birthdays = []
         for item in self._scrolling_panel.Items():
             birthdays.append(item.to_json())
         return {"birthdays": birthdays}
 
     def sort(self) -> None:
+        """Sort the contained BirthdayInfoPanel instances by date."""
         self._scrolling_panel.Sort(key=lambda item: item.date)
 
     def clear(self) -> None:
+        """Remove all birthday entries from the panel."""
         self._scrolling_panel.clear()
 
     def get_birthdays(self) -> List[BirthdayInfoPanel]:
+        """Return the list of BirthdayInfoPanel instances currently present."""
         return self._scrolling_panel.Items()

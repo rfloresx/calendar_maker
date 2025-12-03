@@ -1,9 +1,21 @@
+"""Simple ICS loader and in-memory VCalendar representation.
+
+This module provides a minimal ICS parser (IcsParser) and a VCalendar
+container with VEvent and EventMap helpers used by the GUI to import
+birthday and event data.
+"""
+
 from typing import List, Tuple, Dict, Any
 import json
 import datetime
 
 
 class IcsParser:
+    """Lightweight line-based parser for a subset of the iCalendar format.
+
+    Methods:
+        loads(filename): read an .ics file and return a nested dict structure.
+    """
     class Lines:
         def __init__(self, lines: List[str]):
             self._lines = lines
@@ -18,6 +30,14 @@ class IcsParser:
 
     @staticmethod
     def loads(filename: str) -> dict:
+        """Read an .ics file and return a parsed nested dictionary.
+
+        Args:
+            filename: path to the .ics file to parse.
+
+        Returns:
+            A dictionary representing the parsed VCALENDAR structure.
+        """
         lines = IcsParser.Lines([])
         with open(filename, 'r') as file:
             lines = IcsParser.Lines(file.readlines())
@@ -29,6 +49,7 @@ class IcsParser:
 
     @staticmethod
     def parse_obj(lines: 'IcsParser.Lines') -> dict:
+        """Recursively parse lines into a nested dict until an END is reached."""
         obj: Dict[str, List] = {}
         while True:
             line = lines.next()
@@ -48,20 +69,28 @@ class IcsParser:
 
 
 class VCalendar:
+    """In-memory VCalendar holding VEvent instances.
+
+    VCalendar supports loading from an .ics file (via IcsParser), adding
+    events programmatically and querying events by month/day.
+    """
     SUMMARY_KEY = "SUMMARY"
     DATE_KEY = "DTSTART;VALUE=DATE"
     IMAGES_KEY = "IMAGES"
 
     class VEvent:
+        """Lightweight wrapper around a mapping representing an event."""
         def __init__(self, data: dict):
             self._data = data
 
         @property
         def summary(self) -> str:
+            """Return the SUMMARY value for the event (or empty string)."""
             return self._data.get(VCalendar.SUMMARY_KEY, [""])[0]
 
         @property
         def date(self) -> datetime.date:
+            """Return the DTSTART date as a datetime.date, if present."""
             val = self._data.get(VCalendar.DATE_KEY, [""])[0]
             if isinstance(val, (datetime.date, datetime.datetime)):
                 return val
@@ -71,6 +100,7 @@ class VCalendar:
 
         @property
         def image(self) -> str:
+            """Return the IMAGES value for the event, if any."""
             return self._data.get(VCalendar.IMAGES_KEY, [None])[0]
 
         def add(self, key: str, data: Any) -> None:
@@ -87,10 +117,12 @@ class VCalendar:
             return str({"sumary": self.summary, "date": self.date})
 
     class EventMap:
+        """Internal structure mapping month->day->list[VEvent]."""
         def __init__(self):
             self._data: Dict[int, Dict[int, List['VCalendar.VEvent']]] = {}
 
         def add_event(self, event: 'VCalendar.VEvent') -> None:
+            """Add a VEvent into the internal month/day mapping."""
             date = event.date
             month = self._data.get(date.month, False)
             if not month:
@@ -104,6 +136,11 @@ class VCalendar:
             day.append(event)
 
         def get_events(self, month: int = None, day: int = None) -> list['VCalendar.VEvent']:
+            """Return events for the provided month/day selection.
+
+            If month is None all events are returned. If day is omitted all
+            events for the given month are returned.
+            """
             if month is not None:
                 days = self._data.get(month, {})
                 if day is not None:
@@ -123,16 +160,17 @@ class VCalendar:
                 return events
 
     def __init__(self, filename: str = None):
+        """Create an empty VCalendar or load from an .ics filename."""
         self._events: VCalendar.EventMap = VCalendar.EventMap()
         if filename:
             root = IcsParser.loads(filename)
-            vevents: List[dict] = root.get("VCALENDAR", [{}])[
-                0].get("VEVENT", [])
+            vevents: List[dict] = root.get("VCALENDAR", [{}])[0].get("VEVENT", [])
 
             for event in vevents:
                 self._events.add_event(VCalendar.VEvent(event))
 
     def add_event(self, date: datetime.date, summary: str) -> None:
+        """Convenience to create and add an event from a date and summary."""
         self._events.add_event(VCalendar.VEvent({
             VCalendar.SUMMARY_KEY: [summary],
             VCalendar.DATE_KEY: [date]
@@ -140,6 +178,7 @@ class VCalendar:
 
     @property
     def events(self) -> List['VCalendar.VEvent']:
+        """Return all events as a flat list."""
         return self.get_events()
 
     def get_events(self, month: int = None, day: int = None) -> List['VCalendar.VEvent']:

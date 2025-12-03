@@ -1,3 +1,11 @@
+"""GUI editor main window and application entrypoint.
+
+This module provides CalendarInfoFrame, the main editor window used by the
+application, and MyApp, the wx.App subclass that starts the GUI. Public
+methods that are used by other modules (load, to_json, get_wall_calendar,
+get_desk_calendar, etc.) receive explanatory docstrings.
+"""
+
 try:
     import lib as __lib
 except:
@@ -32,7 +40,12 @@ from lib.gui.settings import Settings
 
 
 class CalendarInfoFrame(MainFrame):
+    """Main editor frame providing project menu, notebook pages and
+    convenience helpers for loading/saving project state and building
+    calendar objects used by exporters.
+    """
     def project_new(self, event: wx.Event) -> None:
+        """Prompt for a directory and initialize a new project there."""
         dirDialog: wx.DirDialog = None
         with wx.DirDialog(self, "New Project", "", wx.DD_DEFAULT_STYLE) as dirDialog:
             if dirDialog.ShowModal() == wx.ID_OK:
@@ -40,6 +53,7 @@ class CalendarInfoFrame(MainFrame):
                 self.init_project(directory)
 
     def project_open(self, event: wx.Event) -> None:
+        """Open a saved project JSON file and load its data into the editor."""
         path = OpenDialog.ChoseFile(self, "Open Project", OpenDialog.JSON)
         if path:
             with open(path) as fp:
@@ -48,11 +62,13 @@ class CalendarInfoFrame(MainFrame):
                 self.load(obj)
 
     def project_save(self, event: wx.Event) -> None:
+        """Save the current project to Project.json inside the project root."""
         with self._files_manager.open("Project.json", "w+") as file:
             obj = self.to_json()
             file.write(json.dumps(obj, indent="    "))
 
     def menu_handler(self, event: wx.Event) -> None:
+        """Handle file menu actions (new/open/save)."""
         eid = event.GetId()
         if eid == wx.ID_OPEN:
             self.project_open(event)
@@ -62,6 +78,7 @@ class CalendarInfoFrame(MainFrame):
             self.project_new(event)
 
     def __init__(self, *args, **kw):
+        """Create and initialize the editor GUI components."""
         super().__init__(*args, **kw)
 
         self._files_manager: FilesManager = FilesManager("tmp")
@@ -133,6 +150,11 @@ class CalendarInfoFrame(MainFrame):
             pass
 
     def load(self, data: dict):
+        """Load project data into the editor views.
+
+        Args:
+            data: dictionary with keys 'artworks', 'desk_pages', 'birthdays', 'settings'.
+        """
         self._files_manager = FilesManager(data["project"])
         self._wall_pages_view.load(data.get("artworks", {}))
         self._desk_pages_view.load(data.get("desk_pages", {}))
@@ -140,6 +162,7 @@ class CalendarInfoFrame(MainFrame):
         self._settings_view.load(data.get("settings", {}))
 
     def to_json(self) -> dict:
+        """Serialize the editor state into a JSON-serializable dict."""
         data = {}
         data["project"] = str(self._files_manager.root)
         data["artworks"] = self._wall_pages_view.to_json()
@@ -150,6 +173,7 @@ class CalendarInfoFrame(MainFrame):
         return data
 
     def init_project(self, project: str) -> None:
+        """Initialize a new project directory and clear current views."""
         self._files_manager = FilesManager(project)
         self._project_name.SetValue(str(self._files_manager.root))
         self._wall_pages_view.clear()
@@ -158,6 +182,7 @@ class CalendarInfoFrame(MainFrame):
         self._settings_view.clear()
 
     def get_vcalendar(self) -> libics.VCalendar:
+        """Collect birthdays from the UI and return a VCalendar instance."""
         birthdays = self._birthday_view.get_birthdays()
         vcal = libics.VCalendar()
 
@@ -171,6 +196,7 @@ class CalendarInfoFrame(MainFrame):
         return vcal
 
     def get_wall_calendar(self) -> libpycal.Calendar:
+        """Build and return a Calendar object representing the wall calendar."""
         cal = libpycal.Calendar(Settings.year, libpycal.EventsManager(
             Settings.year, self.get_vcalendar()))
         pages = self._wall_pages_view.pages
@@ -186,6 +212,7 @@ class CalendarInfoFrame(MainFrame):
         return cal
 
     def get_desk_calendar(self) -> libpycal.Calendar:
+        """Build and return a Calendar object representing the desk calendar."""
         cal = libpycal.Calendar(Settings.year, libpycal.EventsManager(
             Settings.year, self.get_vcalendar()))
         pages = self._desk_pages_view.pages
@@ -201,7 +228,9 @@ class CalendarInfoFrame(MainFrame):
         return cal
 
 class MyApp(wx.App):
+    """Simple wx.App subclass used to start the editor application."""
     def OnInit(self):
+        """Initialize application and show the main editor frame."""
         self.frame = CalendarInfoFrame(None, title="Calendar Editor")
         self.frame.Show()
         return True

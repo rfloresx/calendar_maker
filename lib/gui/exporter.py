@@ -1,3 +1,10 @@
+"""Exporter panel UI helpers.
+
+Contains ExporterPanel which exposes buttons to create wall and desk
+calendar image exports. The panel orchestrates calling the print modules
+and saving generated images via FilesManager.
+"""
+
 try:
     import lib as __lib
 except:
@@ -19,6 +26,12 @@ from lib.gui.util import MainFrame
 from typing import List
 
 class ExporterPanel(wx.Panel):
+    """Panel providing export actions for wall and desk calendars.
+
+    The ExporterPanel finds the main frame to retrieve Calendar objects
+    and invokes the printing routines to generate PNG images which are
+    stored under the project using FilesManager.
+    """
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
         self._sizer: wx.BoxSizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -35,12 +48,14 @@ class ExporterPanel(wx.Panel):
 
 
     def get_main_frame(self) -> 'MainFrame':
+        """Locate and return the parent MainFrame instance or None."""
         parent: wx.Window = self.GetParent()
         while parent is not None and not isinstance(parent, MainFrame):
             parent = parent.GetParent()
         return parent
 
     def on_export_wall_callendar(self, event: wx.Event):
+        """Handler to create wall calendar pages and save them to disk."""
         libwallcal.ImageDrawer.dpi = Settings.dpi
         main_frame = self.get_main_frame()
         if main_frame:
@@ -55,6 +70,7 @@ class ExporterPanel(wx.Panel):
 
 
     def on_export_desk_callendar(self, event: wx.Event):
+        """Handler to create desk calendar pages and save them to disk."""
         libdeskcal.ImageDrawer.dpi = Settings.dpi
         main_frame = self.get_main_frame()
         if main_frame:

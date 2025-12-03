@@ -1,3 +1,11 @@
+"""HTML encoders for the desk-style calendar views.
+
+This module registers HtmlEncoder handlers that convert the calendar model
+objects (from lib.pycal) into small ElementTree fragments suitable for
+rendering a desk-style calendar in HTML. It mirrors the structure used by
+wallcal_html but targets a compact, desk-oriented layout.
+"""
+
 from xml.etree import ElementTree as ET
 import pathlib
 
@@ -61,6 +69,11 @@ def CalendarArtHtml(self: _libcal.CalendarArt) -> ET.Element:
 
 
 class MoonPhaseImages:
+    """Provide file paths for small moon-phase overlay images.
+
+    The image() helper returns a relative path for the given moon phase
+    constant defined by lib.calendar.moon_calendar._MoonCalendar.
+    """
     NEW_MOON_PATH = "images/moon-phases/new-moon.png"
     FIRST_QUARTER_PATH = "images/moon-phases/first-quarter.png"
     FULL_MOON_PATH = "images/moon-phases/full-moon.png"
@@ -82,6 +95,12 @@ class MoonPhaseImages:
 
 @HtmlEncoder.override(_libcal.MoonPhase)
 def MoonPhaseHtml(self: _libcal.MoonPhase) -> ET.Element:
+    """Render a moon phase as an <img> element when an image is available.
+
+    Returns an HtmlTag (ET.Element) containing an <img> with a CSS class
+    that positions the moon overlay inside a calendar cell, or None when
+    no image is defined for the phase.
+    """
     img = MoonPhaseImages.image(self.phase)
     if img:
         return _libhtml.HtmlTag('img', attrib={'class': 'cell-moon-overlay', 'src': img})
@@ -90,6 +109,11 @@ def MoonPhaseHtml(self: _libcal.MoonPhase) -> ET.Element:
 
 @HtmlEncoder.override(_libcal.Day)
 def CellHtml(self: _libcal.Day) -> ET.Element:
+    """Render a single calendar day cell for the desk layout.
+
+    The returned element contains the numeric day and may include an
+    overlay image or text if the model provides photo, text or moon_phase.
+    """
     attrib = {'class': 'month-day-cell'}
     cell = _libhtml.HtmlTag('div', attrib=attrib)
     # if self.photo:
@@ -108,6 +132,11 @@ def CellHtml(self: _libcal.Day) -> ET.Element:
 
 @HtmlEncoder.override(_libcal.Month)
 def MonthHtml(self: _libcal.Month) -> ET.Element: 
+    """Compose the desk month page: header, weekday row and day grid.
+
+    The returned element is a container for the month name and a compact
+    grid of day cells suitable for the desk calendar pages.
+    """
     page = _libhtml.HtmlTag('div', attrib={'class': 'month-page'})
 
     page.add('div', text=f"{self.name} {self.year}",
@@ -132,6 +161,12 @@ def MonthHtml(self: _libcal.Month) -> ET.Element:
 
 @HtmlEncoder.override(_libcal.Calendar)
 def CalendarHtml(self: _libcal.Calendar) -> ET.Element:
+    """Render the entire calendar as a sequence of desk-style pages.
+
+    Each page contains artwork and the corresponding month grid. The
+    function returns a root fragment that can be embedded into an HTML
+    document by the WallCalendar.__html__ wrapper.
+    """
     cal = _libhtml.HtmlTag('div', attrib={'class': 'calendar'})
     # cal.append(HtmlEncoder.to_html(self.front_page))
     for mi in self.pages:
@@ -144,6 +179,12 @@ def CalendarHtml(self: _libcal.Calendar) -> ET.Element:
 
 
 class WallCalendar:
+    """Generate a complete HTML document for a desk calendar instance.
+
+    The object wraps a lib.pycal.Calendar and exposes __html__ returning
+    an ElementTree for writing to disk. CSS file locations are provided
+    by CssResources.
+    """
     def __init__(self, calendar: _libcal.Calendar):
         self._calendar = calendar
 

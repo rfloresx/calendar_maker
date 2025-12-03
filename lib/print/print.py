@@ -1,3 +1,11 @@
+"""High-level printable page builders and drawing helpers.
+
+This module builds printable Page objects (FrontPage, ArtPage, LetterPage)
+and small drawing primitives used by the wall/desk exporters. It also
+exposes a small Fonts factory and unit conversion helpers used by the
+printing pipeline.
+"""
+
 import os
 import PIL.FontFile
 import PIL.Image
@@ -15,6 +23,7 @@ PRINT_DPI = 600
 
 # 72
 def font_to_pt(pt):
+    """Convert a 72-point font measurement to the configured print DPI."""
     return int((pt/72)*PRINT_DPI)
 
 RES_DIR = os.path.join(os.path.dirname(
@@ -22,10 +31,16 @@ RES_DIR = os.path.join(os.path.dirname(
 
 
 class Fonts:
+    """Factory providing access to bundled font files.
+
+    Fonts._Font instances are simple callables returning a PIL FreeType
+    font for a requested size (size is passed through font_to_pt conversion).
+    """
     FONTS_DIR: str = os.path.join(RES_DIR, 'fonts')
 
     @staticmethod
     def open(fontname, size=10) -> PIL.ImageFont.FreeTypeFont:
+        """Open a TrueType font from the resources/fonts directory."""
         return PIL.ImageFont.truetype(os.path.join(Fonts.FONTS_DIR, fontname), size=size)
 
     class _Font:
@@ -33,7 +48,8 @@ class Fonts:
             self._name = f"{name}.ttf"
 
         def __call__(self, size=10) -> PIL.ImageFont.FreeTypeFont:
-            return Fonts.open(self._name, size)
+            """Return a PIL FreeTypeFont instance for the given size."""
+            return Fonts.open(self._name, size=size)
 
         def __str__(self) -> str:
             return self._name
@@ -53,35 +69,43 @@ class Fonts:
 
     @classmethod
     def fonts(cls) -> Iterable['Fonts._Font']:
+        """Yield all available font factory objects."""
         for val in cls.__dict__.values():
             if isinstance(val, Fonts._Font):
                 yield val
 
 def in_to_mm(inches: float) -> float:
+    """Convert inches to millimeters."""
     return inches * 25.4
 
 
 def mm_to_in(mm: float) -> float:
+    """Convert millimeters to inches."""
     return mm / 25.4
 
 
 def in_to_pt(inches: float) -> int:
+    """Convert inches to points based on the configured print DPI."""
     return int(inches * PRINT_DPI)
 
 
 def mm_to_pt(mm: float) -> int:
+    """Convert millimeters to points based on the configured print DPI."""
     return in_to_pt(mm_to_in(mm))
 
 
 def pt_to_in(pt: int) -> float:
+    """Convert points to inches based on the configured print DPI."""
     return pt / PRINT_DPI
 
 
 def pt_to_mm(pt: int) -> float:
+    """Convert points to millimeters based on the configured print DPI."""
     return in_to_mm(pt_to_in(pt))
 
 
 def scale(orig_size: tuple, new_size: tuple) -> tuple:
+    """Scale a size tuple to fit within a new size while maintaining aspect ratio."""
     orig_ratio = orig_size[0] / orig_size[1]
     new_ratio = new_size[0] / new_size[1]
     if orig_ratio > new_ratio:
@@ -92,22 +116,6 @@ def scale(orig_size: tuple, new_size: tuple) -> tuple:
 
 def resize_cover(image: PIL.Image.Image, size: tuple) -> PIL.Image.Image:
     """Resize an image to cover the target size, maintaining aspect ratio."""
-    # """
-    # 10x20 >    100x100 
-    # 10x20 > 100x200 > 100x100
-    
-    # 10x20 >> 200x100
-    # 10x20 > 200x400 > 200x100
-    
-    # 20x10 >> 100x100
-    # 20x10 > 200x100 > 100x100
-
-    # 20x10 >> 100x200
-    # 20x10 > 
-
-    # 100x80 >> 150x75
-    # 100x80 > 150x120 > 150x7511
-    # """
     width, height = image.size
     orig_ratio = width / height
 
@@ -133,10 +141,12 @@ def resize_cover(image: PIL.Image.Image, size: tuple) -> PIL.Image.Image:
 
 
 def center(left, top, right, bottom) -> tuple:
+    """Calculate the center point of a bounding box."""
     return (int((left + right)/2), int((top+bottom)/2))
 
 
 def getbbox(text: str, font: PIL.ImageFont.FreeTypeFont):
+    """Calculate the bounding box for a multiline text string."""
     width = 0
     height = 0
 
@@ -151,12 +161,14 @@ def getbbox(text: str, font: PIL.ImageFont.FreeTypeFont):
 
 
 def tuple_int(*args):
+    """Convert all arguments to integers and return as a tuple."""
     items = []
     for i in args:
         items.append(int(i))
     return tuple(items)
 
 class Element:
+    """Base class for drawable elements."""
     def __init__(self, position: tuple, size: tuple):
         self._pos = position
         self._size = size
@@ -176,10 +188,12 @@ class Element:
         return tuple_int(*self._size)
 
     def draw(self, image: PIL.Image.Image):
+        """Draw the element onto the provided PIL image. Subclasses should override."""
         pass
 
 
 class Image(Element):
+    """Element that renders an image with a given position and size."""
     def __init__(self, image: str, *, pos:tuple=None, size:tuple=None,  box: tuple = None):
         self._image: PIL.Image.Image = PIL.Image.open(image)
 
@@ -194,11 +208,13 @@ class Image(Element):
         super().__init__(pos, size)
 
     def draw(self, image: PIL.Image.Image):
+        """Paste the contained image into the target image respecting cover resize."""
         img = resize_cover(self._image, self.size)
         image.paste(img, self.position)
 
 
 class Text(Element):
+    """Element that renders text using a Fonts-based Font wrapper."""
     def __init__(self, text: str, size: int = 12, box: tuple = (0, 0), color: str = 'black', anchor='lt'):
         self._font: PIL.ImageFont.FreeTypeFont = Fonts.Arial_Bold(size)
         self._text = text
@@ -234,8 +250,7 @@ class Text(Element):
         return 'left'
 
     def get_xy(self):
-        x, y = self.size
-        if x == 0 and y == 0:
+        if self.size == (0,0):
             return self.position
 
         x, y = self.position
@@ -257,6 +272,7 @@ class Text(Element):
         return (x, y)
 
     def draw(self, image: PIL.Image.Image):
+        """Draw the text onto the provided image using the computed anchor."""
         draw = PIL.ImageDraw.Draw(image)
         align = self.get_align()
         xy = self.get_xy()
@@ -266,6 +282,7 @@ class Text(Element):
 
 
 class Rect(Element):
+    """Element that renders a rectangle with optional fill and outline."""
     def __init__(self, position, size, fill=None, outline=None, width=1):
         super().__init__(position, size)
         self._fill = fill
@@ -273,11 +290,13 @@ class Rect(Element):
         self._width = width
     
     def draw(self, image):
+        """Draw a rectangle onto the provided image."""
         draw = PIL.ImageDraw.Draw(image)
         draw.rectangle(self.box, fill=self._fill, outline=self._outline, width=self._width)
 
 
 class Page:
+    """Abstract printable page that collects Element objects and can render to an image."""
     def __init__(self, width_in: int, height_in: int):
         self._size = (in_to_pt(width_in), in_to_pt(height_in))
         self._elements : List[Element] = []
@@ -298,9 +317,11 @@ class Page:
         self._size = (self._size[0], val)
 
     def add_element(self, element:Element):
+        """Add an Element to be drawn when to_image() is called."""
         self._elements.append(element)
 
     def to_image(self):
+        """Render all elements onto a new PIL image and return it."""
         img = PIL.Image.new('RGBA', self._size, color='white')
         for element in self._elements:
             element.draw(img)
@@ -308,6 +329,7 @@ class Page:
 
 
 class LetterPage(Page):
+    """A standard letter-sized page."""
     def __init__(self):
         super().__init__(11, 8.5)
 
@@ -333,6 +355,7 @@ class FrontPage(LetterPage):
         self.load()
 
     def load(self):
+        """Build the front-page element list (background, image and title)."""
         # Add black background
         y_pos = self.TOP_PADDING
         pos = (0, y_pos)
@@ -351,41 +374,9 @@ class FrontPage(LetterPage):
 
         self.add_element(Text(self._text, size=font_to_pt(24), box=box, color='white', anchor='mt'))
 
-    # def to_image(self):
-    #     # New Page Letter landscape
-    #     img = PIL.Image.new('RGB', self._size, color='black')
-    #     y_pos = 0
-    #     if True:
-    #         # 10mm top padding
-    #         draw = PIL.ImageDraw.Draw(img)
-    #         draw.rectangle([0, y_pos, self.width, y_pos +
-    #                        self.TOP_PADDING], fill='white')
-    #         y_pos += FrontPage.TOP_PADDING
-    #     if self._image:
-    #         # 5mm margin
-    #         y_pos += FrontPage.IMG_MARGIN
-    #         # Draw Image
-    #         image: PIL.Image.Image = PIL.Image.open(self._image)
-    #         image = resize_cover(image, self.IMG_SIZE)
-    #         img.paste(image, (0, y_pos))
-    #         y_pos += self.IMG_SIZE[1]
-
-    #     if self._text:
-    #         # Draw Title
-    #         draw = PIL.ImageDraw.Draw(img)
-    #         # X center possiont
-    #         x_pos = int(self.width/2)
-    #         # Add 5mm padding
-    #         y_pos += mm_to_pt(1)
-    #         font = Fonts.Arial_Bold(mm_to_pt(10))
-    #         draw.text(xy=(x_pos, y_pos), text=self._text, font=font,
-    #                   fill='white', anchor='ma', align='center')
-
-    #     img.save('out/front_page.png')
-    #     return img
-
 
 class ArtPage(LetterPage):
+    """Simple artwork page layout (black background + photo + description)."""
     BIND_PADDING = mm_to_pt(10)
     BORDER = in_to_pt(.5)
 
@@ -396,6 +387,7 @@ class ArtPage(LetterPage):
         self.load()
 
     def load(self):
+        """Build elements for the art page (background, image, and text)."""
         # Black Background
         pos = (0,0)
         size = (self.width, self.height-self.BIND_PADDING)
@@ -414,13 +406,16 @@ class ArtPage(LetterPage):
 
 
 def bbox(pos, size):
+    """Calculate a bounding box from a position and size."""
     return (pos[0], pos[1], size[0]+pos[0], size[1]+pos[1])
 
 class PrintDecoder:
+    """Decoder that dispatches drawing for registered object types."""
     def __init__(self):
         self._handlers = {}
     
     def draw(self, obj) -> PIL.Image:
+        """Dispatch drawing for a registered object type or call __draw__."""
         type_ = type(obj)
         ret = None
         if type_ in self._handlers:
@@ -432,46 +427,13 @@ class PrintDecoder:
         return ret    
 
     def override(self, _type:type):
+        """Register a custom handler for a specific type."""
         def handler(func):
             self._handlers[_type] = func
             return func
         return handler
 
 if __name__ == "__main__":
-    
-    # img = PIL.Image.new('RGB', (300, 500), color='white')
-    
-    # draw = PIL.ImageDraw.Draw(img)
-    
-    # pos = 10
-    # for h in ['l', 'm', 'r']:
-    #     for v in ['t', 'm', 'b']:
-    #         anchor = ''.join([h,v])
-    #         # print(anchor)
-    #         _bbox = bbox((10,pos),(200,30))
-    #         pos += 50
-    #         draw.rectangle(_bbox, outline='red')
-    #         t = Text(f"Test {anchor}", box=_bbox, anchor=anchor, color='red')
-    #         t.draw(img)
-    # _bbox = bbox((10,50),(200,30))
-    # draw.rectangle(_bbox, outline='red')
-    # t = Text("Test 2", box=_bbox, anchor='lm', color='green')
-    # t.draw(img)
-    # _bbox = bbox((10,100),(200,30))
-    # draw.rectangle(_bbox, outline='red')
-    # t = Text("Test 3", box=_bbox, anchor='lb', color='blue')
-    # t.draw(img)
-    
-    # img.show()
-    # pass
-    # txt1 = "Hello World"
-    # txt2 = "Hello\nWorld"
-    # txt3 = "1234\n12345\n123456789"
-    # font = Fonts.Arial(12)
-
-    # print(getbbox(txt1, font))
-    # print(getbbox(txt2, font))
-    # print(getbbox(txt3, font))
     front_page = FrontPage('resources/images/PXL_COVER.jpg', 'CALENDAR\n2025')
     img = front_page.to_image()
     img.show()

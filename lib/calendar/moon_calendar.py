@@ -1,3 +1,11 @@
+"""Moon phases as a holiday-style calendar provider.
+
+This module implements _MoonCalendar, a small ObservedHolidayBase subclass
+that exposes moon phases (new, first quarter, full, last quarter) as
+holiday-like entries for a given year. The class is used by EventsManager
+in lib.pycal to include moon-phase events in the generated calendar.
+"""
+
 import ephem
 import datetime
 from holidays.observed_holiday_base import (
@@ -5,6 +13,12 @@ from holidays.observed_holiday_base import (
 )
 
 class _MoonCalendar(ObservedHolidayBase):
+    """ObservedHolidayBase subclass that adds moon phase dates as holidays.
+
+    The class computes the sequential moon phases starting from January 1st
+    of the target year and continues adding phases until the next year is
+    reached.
+    """
     country = "MOON"
     observed_label = "%s (observed)"
     start_year = 1777
@@ -51,4 +65,3 @@ if __name__ == "__main__":
     moon = _MoonCalendar(years=(2025))
     for k,v in moon.items():
         print(k, v)
-    

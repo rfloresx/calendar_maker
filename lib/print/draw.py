@@ -1,3 +1,12 @@
+"""Low-level drawing utilities and resolution helpers.
+
+This module provides a small abstraction over PIL for working with printable
+units (in, mm, px), bounding boxes and drawing primitives. Public types
+include Resolution (unit conversion), BBox, Fonts, Font, Image, Draw and
+DrawDecoder which is used by higher-level print modules to register
+rendering functions for application objects.
+"""
+
 import os
 import re
 
@@ -19,6 +28,12 @@ class Units:
 
 
 class _Resolution:
+    """Conversion utility between measurement units and printer points.
+
+    The Resolution instance exposes to_pt/pt_to helpers and allows selecting
+    a default unit (Resolution.unit) and a DPI to perform conversions that
+    are consistent across the drawing code.
+    """
     NUMBER = r"[-+]?[0-9]*\.?[0-9]+"
     FMT_EXP = re.compile(f"({NUMBER})([a-z]*)")
 
@@ -30,14 +45,21 @@ class _Resolution:
 
     @property
     def dpi(self) -> int:
+        """Return the configured DPI used for conversions."""
         return self._dpi
 
     @property
     def unit(self) -> str:
+        """Return the current default unit (one of Units)."""
         return self._unit
 
     @unit.setter
     def unit(self, unit: str) -> None:
+        """Set the default unit used by to_pt/pt_to conversions.
+
+        The setter locates the corresponding conversion functions and uses
+        them for subsequent calls to Resolution.to_pt and Resolution.pt_to.
+        """
         if unit:
             fn = getattr(self, f"{unit}_to_pt")
             fn2 = getattr(self, f"pt_to_{unit}")
@@ -47,18 +69,22 @@ class _Resolution:
 
     @dpi.setter
     def dpi(self, value) -> None:
+        """Set the DPI value used for unit conversions."""
         self._dpi = int(value)
 
     def none_to_pt(self, val: float) -> int:
+        """Identity conversion when no unit is set."""
         return int(val)
 
     def mm_to_in(self, mm: float) -> float:
         return mm / 25.4
 
     def font_to_pt(self, font_size: int) -> int:
+        """Convert font size in points to device pixels using current DPI."""
         return int((font_size/72)*self._dpi)
 
     def in_to_pt(self, inches: float) -> int:
+        """Convert inches to printer points (pixels) using DPI."""
         return int(inches*self._dpi)
     
     def pt_to_in(self, pt: int) -> float:
@@ -83,6 +109,12 @@ class _Resolution:
         return self._revert(val)
 
     def to_pt(self, *value: str) -> int:
+        """Convert the provided value(s) to points using the configured unit.
+
+        Accepts numeric values, tuple/list of values, or strings with units
+        (e.g. '12.5in', '20mm'). Returns an int or a tuple/list of ints
+        matching the input shape.
+        """
         if len(value) == 1:
             value = value[0]
         if isinstance(value, (float, int)):
@@ -100,6 +132,11 @@ class _Resolution:
         return 0
 
     def pt_to(self, *value: str) -> int:
+        """Convert points back to the configured unit or to a numeric value.
+
+        Mirrors to_pt but performs the inverse conversion using the selected
+        unit.
+        """
         if len(value) == 1:
             value = value[0]
         if isinstance(value, (float, int)):
@@ -120,6 +157,12 @@ Resolution = _Resolution()
 
 
 class BBox(tuple):
+    """Tuple-like bounding box with convenience accessors.
+
+    BBox instances store (left, top, right, bottom) coordinates and expose
+    properties for width/height/center and simple geometry helpers move()
+    and shrink().
+    """
     @staticmethod
     def new(x, y, w, h) -> 'BBox':
         return BBox(x, y, x + w, y + h)
@@ -191,6 +234,11 @@ class BBox(tuple):
 
 
 class Fonts:
+    """Convenience font factory mapping logical names to font files.
+
+    Fonts._Font instances are callable to produce PIL FreeType fonts at the
+    configured resolution via Resolution.font_to_pt().
+    """
     RES_DIR: str = os.path.dirname(os.path.realpath(__file__))
     FONTS_DIR: str = os.path.join(RES_DIR, 'fonts')
 
@@ -250,6 +298,12 @@ class Fonts:
 
 
 class Font:
+    """Lightweight wrapper around a PIL font instance.
+
+    The Font class accepts either a Fonts._Font or a string name and returns
+    a callable object that can provide PIL FreeTypeFont objects adjusted to
+    the configured Resolution.
+    """
     def __init__(self, font: Union[Fonts, str], size: int):
         if isinstance(font, str):
             font = Fonts.MAP.get(font, Fonts.Arial)
@@ -290,6 +344,7 @@ class Font:
         draw = PIL.ImageDraw.Draw(target)
         draw.text(xy, text, fill, self._font, anchor, spacing, align, direction,
                   features, language, stroke_width, stroke_fill, embedded_color)
+
 
 def _resize_to_cover(image: PIL.Image.Image, bbox: Tuple):
     if len(bbox) == 2:
@@ -495,14 +550,6 @@ class DrawDecoder:
     def dpi(self, value) -> None:
         Resolution.dpi = value
 
-# class Text:
-#     def __init__(self, text:str, font:Fonts, size:int = 12, direction, features, language, stroke_width, anchor):
-#         self._font : PIL.ImageFont.FreeTypeFont = font(Resolution.font_to_pt(size))
-#         self._text = text
-#         bbox = self._font.getbbox(self._text, direction, features, language, stroke_width, anchor)
-#         self._image = PIL.Image.new("RGBA", (bbox[2], bbox[3]), (0,0,0,0))
-#         draw = PIL.ImageDraw.Draw(self._image)
-#         draw.text((0,0), self._text,)
 if __name__ == "__main__":
     # font = Font(Fonts.Arial, 8)
     # img = font.ToImage("Hello World", 'red')
