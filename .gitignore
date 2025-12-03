@@ -2,6 +2,6 @@ tmp/
 __pycache__/
 .DS_Store
 .vscode/
-.env
+.venv/
 .idea/
 *.log
