@@ -1,0 +1,96 @@
+.main {
+    max-width: fit-content;
+    margin: auto;
+}
+
+.page-wall-calendar {
+    width: 11in;
+    height: 4.67in;
+    font-size: 64;
+}
+
+.page-break {
+    page-break-after: always;
+}
+
+.desk-page {
+    width: 8.5in;
+    /* height: 4.25in; */
+    height: 4.66in;
+    display: grid;
+    grid-template-columns: 50% 50%;
+}
+
+.desk-art-page {
+    width: auto;
+}
+
+.desk-art-page-img {
+    width: 4.25in;
+    height: 4.66in;
+    object-fit: cover;
+    /* height: 4.25in; */
+}
+
+.desk-art-page-title {
+    width: 4.25in;
+}
+
+
+.month-page {
+    padding-top: .41in;
+    width: 4.25in;
+    height: 4.25in;
+}
+
+.month-calendar-container {
+    /* margin: auto;
+    width: fit-content;
+    height: fit-content; */
+    padding-left: .1in;
+    padding-right: .1in;
+    display: grid;
+    grid-template-columns: 14% 14% 14% 14% 14% 14% 14%;
+    grid-template-rows: auto auto auto auto auto auto auto;
+    box-sizing: border-box;
+}
+
+
+
+.month-header {
+    font-weight: bold;
+    text-align: center;
+    font-size: 42;
+    font-family: sans-serif;
+    /* height: .5in; */
+    padding-bottom: .1in;
+    padding-top: .35in;
+}
+
+.month-day-header {
+    height: .3in;
+    text-align: center;
+    font-family: sans-serif;
+    font-size: 18;
+    font-weight: bold;
+}
+
+.month-day-cell {
+    height: .4in;
+    font-family: sans-serif;
+    font-size: 24;
+    text-align: center;
+}
+
+.month-description {
+    position: relative;
+    top: -.4in;
+    text-align: center;
+    font-size: 20;
+    white-space: pre-line;
+}
+
+.month-description p {
+    padding: 0px;
+    margin: 0px;
+}

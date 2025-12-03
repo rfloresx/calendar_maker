@@ -1,0 +1,20 @@
+
+@page {
+    size : 11in 8.5in;
+}
+
+@page :left {
+    padding-top: 0in;
+    padding-bottom: .3in;
+}
+
+@page :right {
+    padding-top: .3in;
+    padding-bottom: 0in;
+}
+
+@media print {
+    .page-letter-landscape {
+        border: none;
+    }
+}
