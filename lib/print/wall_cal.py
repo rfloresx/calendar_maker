@@ -197,7 +197,7 @@ class CalendarPageLayout(WallCalPage):
 def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image.Image:
     """Render a lib.pycal.FrontPage into a PIL Image using the FrontPageLayout."""
     image_path = FilesManager.instance().get_file_path(self.image)
-    font = _libdraw.Font(_libdraw.Fonts.EBGaramond_Bold, 48)
+    font = _libdraw.Font(_libdraw.fonts.EBGaramond_Bold, 48)
 
     page = FrontPageLayout()
     draw = _libdraw.Draw(page.page)
@@ -216,7 +216,7 @@ def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image.Image:
 def DrawCalendarArt(self: _libcal.CalendarArt) -> PIL.Image.Image:
     """Render a lib.pycal.CalendarArt into a PIL Image using ArtPageLayout."""
     image_path = FilesManager.instance().get_file_path(self.image)
-    font = _libdraw.Font(_libdraw.Fonts.Helvetica, 14)
+    font = _libdraw.Font(_libdraw.fonts.Roboto, 14)
 
     page = ArtPageLayout()
     draw = _libdraw.Draw(page.page)
@@ -272,7 +272,7 @@ def DrawCell(page : CalendarPageLayout, day: _libcal.Day, pos : _libdraw.BBox) -
         has_photo = True
     if day.day:
         day_pos = _libdraw.BBox.new(padding, padding, .2, .2).move(img_size.x, img_size.y)
-        font = _libdraw.Font(_libdraw.Fonts.Helvetica, 14)
+        font = _libdraw.Font(_libdraw.fonts.Roboto, 14)
         draw.text(f"{day.day}", day_pos, font, fill='black')
     
     
@@ -288,7 +288,7 @@ def DrawCell(page : CalendarPageLayout, day: _libcal.Day, pos : _libdraw.BBox) -
     # day._text = "Hello\nWorld"
     if has_photo:
         if day.text:
-            font = _libdraw.Font(_libdraw.Fonts.Helvetica, 10)
+            font = _libdraw.Font(_libdraw.fonts.Roboto, 10)
 
             mtext = draw.get_multiline_text(day.text, pos.width, font)
             # mtext = 
@@ -303,7 +303,7 @@ def DrawCell(page : CalendarPageLayout, day: _libcal.Day, pos : _libdraw.BBox) -
             draw.text(mtext, (x_pos, y_pos), font, fill='white', anchor='md', align='center')
     else:
         if day.text:
-            font = _libdraw.Font(_libdraw.Fonts.Helvetica, 10)
+            font = _libdraw.Font(_libdraw.fonts.Roboto, 10)
 
             mtext = draw.get_multiline_text(day.text, pos.width, font)
 
@@ -317,8 +317,8 @@ def DrawCell(page : CalendarPageLayout, day: _libcal.Day, pos : _libdraw.BBox) -
 @ImageDrawer.override(_libcal.Month)
 def DrawMonth(self: _libcal.Month) -> PIL.Image.Image:
     """Render a lib.pycal.Month into a PIL Image using CalendarPageLayout."""
-    title_font = _libdraw.Font(_libdraw.Fonts.Helvetica, 58)
-    header_font = _libdraw.Font(_libdraw.Fonts.Helvetica, 14)
+    title_font = _libdraw.Font(_libdraw.fonts.Roboto, 58)
+    header_font = _libdraw.Font(_libdraw.fonts.Roboto, 14)
     
     page = CalendarPageLayout()
     draw = _libdraw.Draw(page.page)

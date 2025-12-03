@@ -7,7 +7,6 @@ printing pipeline.
 """
 
 import os
-import PIL.FontFile
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
@@ -26,53 +25,7 @@ def font_to_pt(pt):
     """Convert a 72-point font measurement to the configured print DPI."""
     return int((pt/72)*PRINT_DPI)
 
-RES_DIR = os.path.join(os.path.dirname(
-    os.path.realpath(__file__)), 'resources')
-
-
-class Fonts:
-    """Factory providing access to bundled font files.
-
-    Fonts._Font instances are simple callables returning a PIL FreeType
-    font for a requested size (size is passed through font_to_pt conversion).
-    """
-    FONTS_DIR: str = os.path.join(RES_DIR, 'fonts')
-
-    @staticmethod
-    def open(fontname, size=10) -> PIL.ImageFont.FreeTypeFont:
-        """Open a TrueType font from the resources/fonts directory."""
-        return PIL.ImageFont.truetype(os.path.join(Fonts.FONTS_DIR, fontname), size=size)
-
-    class _Font:
-        def __init__(self, name) -> None:
-            self._name = f"{name}.ttf"
-
-        def __call__(self, size=10) -> PIL.ImageFont.FreeTypeFont:
-            """Return a PIL FreeTypeFont instance for the given size."""
-            return Fonts.open(self._name, size=size)
-
-        def __str__(self) -> str:
-            return self._name
-
-        def __repr__(self) -> str:
-            return f'{self.__class__.__name__}({self._name})'
-
-    Arial_Bold_Italic = _Font('Arial_Bold_Italic')
-    Arial_Bold = _Font('Arial_Bold')
-    Arial_Italic = _Font('Arial_Italic')
-    Arial = _Font('Arial')
-    Courier_New = _Font('Courier_New')
-    Verdana_Bold_Italic = _Font('Verdana_Bold_Italic')
-    Verdana_Bold = _Font('Verdana_Bold')
-    Verdana_Italic = _Font('Verdana_Italic')
-    Verdana = _Font('Verdana')
-
-    @classmethod
-    def fonts(cls) -> Iterable['Fonts._Font']:
-        """Yield all available font factory objects."""
-        for val in cls.__dict__.values():
-            if isinstance(val, Fonts._Font):
-                yield val
+import fonts
 
 def in_to_mm(inches: float) -> float:
     """Convert inches to millimeters."""
@@ -216,7 +169,8 @@ class Image(Element):
 class Text(Element):
     """Element that renders text using a Fonts-based Font wrapper."""
     def __init__(self, text: str, size: int = 12, box: tuple = (0, 0), color: str = 'black', anchor='lt'):
-        self._font: PIL.ImageFont.FreeTypeFont = Fonts.Arial_Bold(size)
+        self._font: PIL.ImageFont.FreeTypeFont = fonts.Arimo_Bold(size)
+        
         self._text = text
         self._color = color
         self._hanchor = anchor[0]

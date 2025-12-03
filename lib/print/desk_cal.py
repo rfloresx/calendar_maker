@@ -161,7 +161,7 @@ def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image:
         draw = _libdraw.Draw(page.page)
 
         center = DeskCalSize.info_bbox().center
-        font = _libdraw.Font(_libdraw.Fonts.EBGaramond_Bold, 48)
+        font = _libdraw.Font(_libdraw.fonts.EBGaramond_Bold, 48)
         draw.text(self.title, center, font, anchor='mm',
                   fill='black', align='center')
 
@@ -206,7 +206,7 @@ def DrawArtPage(self: _libcal.CalendarArt) -> PIL.Image.Image:
         top = bot - title_height
         bbox = _libdraw.BBox(left, top, right, bot)
         text_pos = bbox.center
-        font = _libdraw.Font(_libdraw.Fonts.EBGaramond, 14)
+        font = _libdraw.Font(_libdraw.fonts.EBGaramond, 14)
         draw.text(self.title, text_pos, font, anchor='mm',
                   fill='black', align='center')
         # draw.rectangle(bbox, fill=None, outline='red', width="1pt")
@@ -232,11 +232,11 @@ def DrawMonth(self: _libcal.Month):
     # Height .6
     title = _libdraw.BBox((0, 0, 2.6, .6))
 
-    font = _libdraw.Font(_libdraw.Fonts.Helvetica_Bold, 24)
+    font = _libdraw.Font(_libdraw.fonts.Roboto_Bold, 24)
     draw.text(f"{self.name} {self.year}", title.center, font,
               fill='black', anchor='mm', align='center')
 
-    font = _libdraw.Font(_libdraw.Fonts.Helvetica_Bold, 10)
+    font = _libdraw.Font(_libdraw.fonts.Roboto_Bold, 10)
 
     # Calendar Week days
     # Height .2
@@ -254,7 +254,7 @@ def DrawMonth(self: _libcal.Month):
     # Calendar Days
     # Day Height .3
     # Day Width .37
-    font = _libdraw.Font(_libdraw.Fonts.Helvetica, 10)
+    font = _libdraw.Font(_libdraw.fonts.Roboto, 10)
     day_start = _libdraw.BBox(0, .8, .37, .8+.3)
 
     for week in weeks:

@@ -7,22 +7,22 @@ EB Garamond is a variable font with this axis:
   wght
 
 This means all the styles are contained in these files:
-  EBGaramond-VariableFont_wght.ttf
-  EBGaramond-Italic-VariableFont_wght.ttf
+  EB_Garamond/EBGaramond-VariableFont_wght.ttf
+  EB_Garamond/EBGaramond-Italic-VariableFont_wght.ttf
 
 If your app fully supports variable fonts, you can now pick intermediate styles
 that aren’t available as static fonts. Not all apps support variable fonts, and
 in those cases you can use the static font files for EB Garamond:
-  static/EBGaramond-Regular.ttf
-  static/EBGaramond-Medium.ttf
-  static/EBGaramond-SemiBold.ttf
-  static/EBGaramond-Bold.ttf
-  static/EBGaramond-ExtraBold.ttf
-  static/EBGaramond-Italic.ttf
-  static/EBGaramond-MediumItalic.ttf
-  static/EBGaramond-SemiBoldItalic.ttf
-  static/EBGaramond-BoldItalic.ttf
-  static/EBGaramond-ExtraBoldItalic.ttf
+  EB_Garamond/static/EBGaramond-Regular.ttf
+  EB_Garamond/static/EBGaramond-Medium.ttf
+  EB_Garamond/static/EBGaramond-SemiBold.ttf
+  EB_Garamond/static/EBGaramond-Bold.ttf
+  EB_Garamond/static/EBGaramond-ExtraBold.ttf
+  EB_Garamond/static/EBGaramond-Italic.ttf
+  EB_Garamond/static/EBGaramond-MediumItalic.ttf
+  EB_Garamond/static/EBGaramond-SemiBoldItalic.ttf
+  EB_Garamond/static/EBGaramond-BoldItalic.ttf
+  EB_Garamond/static/EBGaramond-ExtraBoldItalic.ttf
 
 Get started
 -----------

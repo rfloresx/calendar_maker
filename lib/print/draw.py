@@ -15,6 +15,8 @@ import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
 from typing import Iterable, List, Tuple, Union, Any
+import lib.print.fonts as fonts
+from lib.print.fonts import Fonts
 
 PRINT_DPI = 300
 
@@ -233,70 +235,6 @@ class BBox(tuple):
         return BBox(self[0] + val, self[1] + val, self[2] - val, self[3] - val)
 
 
-class Fonts:
-    """Convenience font factory mapping logical names to font files.
-
-    Fonts._Font instances are callable to produce PIL FreeType fonts at the
-    configured resolution via Resolution.font_to_pt().
-    """
-    RES_DIR: str = os.path.dirname(os.path.realpath(__file__))
-    FONTS_DIR: str = os.path.join(RES_DIR, 'fonts')
-
-    @staticmethod
-    def open(fontname, size=10) -> PIL.ImageFont.FreeTypeFont:
-        return PIL.ImageFont.truetype(os.path.join(Fonts.FONTS_DIR, fontname), size=size)
-
-    class _Font:
-        def __init__(self, name) -> None:
-            self._name = name
-            self._filename = f"{name}.ttf"
-
-        @property
-        def name(self) -> str:
-            return self._name
-
-        def __call__(self, size=12) -> PIL.ImageFont.FreeTypeFont:
-            return Fonts.open(self._filename, Resolution.font_to_pt(size))
-
-        def __str__(self) -> str:
-            return self._name
-
-        def __repr__(self) -> str:
-            return f'{self.__class__.__name__}({self._name})'
-
-    Arial_Bold_Italic = _Font('Arial_Bold_Italic')
-    Arial_Bold = _Font('Arial_Bold')
-    Arial_Italic = _Font('Arial_Italic')
-    Arial = _Font('Arial')
-    Courier_New = _Font('Courier_New')
-    Verdana_Bold_Italic = _Font('Verdana_Bold_Italic')
-    Verdana_Bold = _Font('Verdana_Bold')
-    Verdana_Italic = _Font('Verdana_Italic')
-    Verdana = _Font('Verdana')
-    EBGaramond = _Font('EBGaramond')
-    EBGaramond_Bold = _Font('EBGaramond_Bold')
-    Helvetica = _Font('Helvetica')
-    Helvetica_Bold = _Font('Helvetica_Bold')
-
-    MAP = {
-        Arial_Bold_Italic.name: Arial_Bold_Italic,
-        Arial_Bold.name: Arial_Bold,
-        Arial_Italic.name: Arial_Italic,
-        Arial.name: Arial,
-        Courier_New.name: Courier_New,
-        Verdana_Bold_Italic.name: Verdana_Bold_Italic,
-        Verdana_Bold.name: Verdana_Bold,
-        Verdana_Italic.name: Verdana_Italic,
-        Verdana.name: Verdana
-    }
-
-    @classmethod
-    def fonts(cls) -> Iterable['Fonts._Font']:
-        for val in cls.__dict__.values():
-            if isinstance(val, Fonts._Font):
-                yield val
-
-
 class Font:
     """Lightweight wrapper around a PIL font instance.
 
@@ -306,10 +244,13 @@ class Font:
     """
     def __init__(self, font: Union[Fonts, str], size: int):
         if isinstance(font, str):
-            font = Fonts.MAP.get(font, Fonts.Arial)
+            font = fonts.MAP.get(font, fonts.Arimo)
         elif isinstance(font, Fonts._Font):
             font = font
-        self._font = font(size)
+        # Fonts._Font in the unified fonts module expects device pixels; the
+        # previous implementation converted point sizes via Resolution.font_to_pt
+        # so preserve that behavior here.
+        self._font = font(Resolution.font_to_pt(size))
 
     @property
     def font(self) -> PIL.ImageFont.FreeTypeFont:
@@ -551,15 +492,6 @@ class DrawDecoder:
         Resolution.dpi = value
 
 if __name__ == "__main__":
-    # font = Font(Fonts.Arial, 8)
-    # img = font.ToImage("Hello World", 'red')
-    # img.show()
-    # h = ['l', 'm', 'r']
-    # v = ['a', 'm', 'd']
-    # for a in h:
-    #     for b in v:
-    #         font.Draw("Hello World", direction='ttb', anchor=f'{a}{b}')
-
     print(Resolution.to_pt(("12.5in", 12, "12.2px")))
     print(Resolution.to_pt("12.5mm"))
     print(Resolution.to_pt("12.5cm"))
