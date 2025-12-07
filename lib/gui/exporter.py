@@ -65,6 +65,8 @@ class ExporterPanel(wx.Panel):
                 imgs : List[PIL.Image.Image] = libwallcal.ImageDrawer.draw(cal)
                 for i, img in enumerate(imgs):
                     progress_dialog.Update(i+1)
+                    if img is None:
+                        continue
                     fout = FilesManager.instance().get_file_path(f"WallCal/Page_{i}.png")
                     img.save(str(fout))
 
@@ -80,6 +82,8 @@ class ExporterPanel(wx.Panel):
                 imgs : List[PIL.Image.Image] = libdeskcal.ImageDrawer.draw(cal)
                 for i, img in enumerate(imgs):
                     progress_dialog.Update(i+1)
+                    if img is None:
+                        continue
                     fout = FilesManager.instance().get_file_path(f"DeskCal/Page_{i}.png")
                     img.save(str(fout))
 

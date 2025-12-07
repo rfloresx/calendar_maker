@@ -199,7 +199,7 @@ def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image.Image:
     image_path = FilesManager.instance().get_file_path(self.image)
     font = _libdraw.Font(_libdraw.fonts.EBGaramond_Bold, 48)
 
-    page = FrontPageLayout()
+    page = FrontPageLayout(color="black")
     draw = _libdraw.Draw(page.page)
 
     draw.rectangle(page.main_bbox(), fill='black', width=0)
@@ -218,7 +218,7 @@ def DrawCalendarArt(self: _libcal.CalendarArt) -> PIL.Image.Image:
     image_path = FilesManager.instance().get_file_path(self.image)
     font = _libdraw.Font(_libdraw.fonts.Roboto, 14)
 
-    page = ArtPageLayout()
+    page = ArtPageLayout(color='black')
     draw = _libdraw.Draw(page.page)
 
     draw.rectangle(page.main_bbox(), fill='black', width=0)

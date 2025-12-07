@@ -8,7 +8,7 @@ throughout the GUI.
 import wx
 import wx.lib.scrolledpanel as scrolled
 
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Optional
 
 try:
     import lib as __lib
@@ -18,8 +18,11 @@ except:
     sys.path.append(dirname(dirname(dirname(__file__))))
 
 from lib.filemanager import FilesManager
+import lib.gui.geoutil as geoutil
 import PIL.Image
 import lib.pycal as libpycal
+import piexif
+import datetime
 
 
 def get_image_metadata(image: str) -> dict:
@@ -28,8 +31,6 @@ def get_image_metadata(image: str) -> dict:
     Returns a dictionary with any discovered keys. Best-effort: failures
     return an empty dict instead of raising.
     """
-    import json
-    import piexif
 
     result = {}
     try:
@@ -50,67 +51,107 @@ def get_image_metadata(image: str) -> dict:
                     dto = str(dto)
             result["DateTimeOriginal"] = dto
 
-            gps = exif_dict.get('GPS', {})
-            result["GPSInfo"] = gps
-
-            # Helper to convert rationals to float
-            def _rat2float(rat):
-                try:
-                    return float(rat[0]) / float(rat[1]) if rat[1] != 0 else 0.0
-                except Exception:
-                    return 0.0
-
-            def _dms_to_deg(dms):
-                # dms is a tuple of 3 rationals: (deg, min, sec)
-                deg = _rat2float(dms[0])
-                minutes = _rat2float(dms[1])
-                seconds = _rat2float(dms[2])
-                return deg + minutes / 60.0 + seconds / 3600.0
-
-            # Parse latitude and longitude if present
-            try:
-                lat_tuple = gps.get(piexif.GPSIFD.GPSLatitude)
-                lat_ref = gps.get(piexif.GPSIFD.GPSLatitudeRef)
-                lon_tuple = gps.get(piexif.GPSIFD.GPSLongitude)
-                lon_ref = gps.get(piexif.GPSIFD.GPSLongitudeRef)
-
-                latitude = None
-                longitude = None
-                if lat_tuple and lat_ref and lon_tuple and lon_ref:
-                    latitude = _dms_to_deg(lat_tuple)
-                    if isinstance(lat_ref, bytes):
-                        lat_ref = lat_ref.decode('utf-8', errors='ignore')
-                    if lat_ref and lat_ref.upper() == 'S':
-                        latitude = -abs(latitude)
-
-                    longitude = _dms_to_deg(lon_tuple)
-                    if isinstance(lon_ref, bytes):
-                        lon_ref = lon_ref.decode('utf-8', errors='ignore')
-                    if lon_ref and lon_ref.upper() == 'W':
-                        longitude = -abs(longitude)
-
-                    result['latitude'] = latitude
-                    result['longitude'] = longitude
-
-                # Altitude (optional)
-                alt = gps.get(piexif.GPSIFD.GPSAltitude)
-                if alt is not None:
-                    try:
-                        result['altitude'] = _rat2float(alt)
-                    except Exception:
-                        pass
-            except Exception:
-                # keep best-effort behavior; don't raise on malformed GPS
-                print("Failed to parse GPS info")
-                pass
-
-            # debug print if needed
-            # print(json.dumps(exif_dict, indent=4, default=str))
+            # gps = exif_dict.get('GPS', {})
+            # result["GPSInfo"] = gps
+            lat, lon, alt = gps_from_exif(exif_dict)
+            if lat is not None and lon is not None:
+                result["GPSLatitude"] = lat
+                result["GPSLongitude"] = lon
+            if alt is not None:
+                result["GPSAltitude"] = alt
     except Exception:
         # Failed to open image or parse EXIF; return whatever we have so far
         pass
 
     return result
+
+
+def _rat2float(r):
+    try:
+        n, d = r
+        return float(n) / float(d) if d else 0.0
+    except Exception:
+        return float(r) if isinstance(r, (int, float)) else 0.0
+
+
+def _dms_to_deg(dms):
+    deg = _rat2float(dms[0])
+    minutes = _rat2float(dms[1])
+    seconds = _rat2float(dms[2]) if len(dms) > 2 else 0.0
+    return deg + minutes / 60.0 + seconds / 3600.0
+
+
+def gps_from_exif(exif_dict) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    gps = exif_dict.get("GPS", {}) or {}
+    # normalize keys to ints
+    norm = {}
+    for k, v in gps.items():
+        ik = int(k) if isinstance(k, str) and k.isdigit() else k
+        norm[ik] = v
+
+    def decode_ref(x: Any):
+        if isinstance(x, bytes):
+            return x.decode(errors="ignore")
+        if isinstance(x, (tuple, list)) and len(x) == 1 and isinstance(x[0], bytes):
+            return x[0].decode(errors="ignore")
+        return x
+
+    lat = lon = alt = None
+    lat_ref = decode_ref(norm.get(piexif.GPSIFD.GPSLatitudeRef) or norm.get(1))
+    lon_ref = decode_ref(
+        norm.get(piexif.GPSIFD.GPSLongitudeRef) or norm.get(3))
+    lat_val = norm.get(piexif.GPSIFD.GPSLatitude) or norm.get(2)
+    lon_val = norm.get(piexif.GPSIFD.GPSLongitude) or norm.get(4)
+    if lat_val and lat_ref and lon_val and lon_ref:
+        lat = _dms_to_deg(lat_val)
+        lon = _dms_to_deg(lon_val)
+        if str(lat_ref).upper().startswith("S"):
+            lat = -abs(lat)
+        if str(lon_ref).upper().startswith("W"):
+            lon = -abs(lon)
+    alt_val = norm.get(piexif.GPSIFD.GPSAltitude) or norm.get(6)
+    if alt_val is not None:
+        alt = _rat2float(alt_val)
+    return lat, lon, alt
+
+
+class ImageInfo():
+    """Simple container for image filename and metadata dictionary."""
+
+    def __init__(self, filename: str = None, metadata: dict = None):
+        self.filename = filename
+        self.metadata = metadata if metadata is not None else {}
+
+    @property
+    def datetime_original(self) -> Optional[datetime.datetime]:
+        """Return the DateTimeOriginal datetime from metadata or None."""
+        dto = self.metadata.get("DateTimeOriginal", None)
+        if dto is not None and isinstance(dto, bytes):
+            try:
+                dto = dto.decode('utf-8')
+            except Exception:
+                dto = str(dto)
+        if dto:
+            try:
+                return datetime.datetime.strptime(dto, '%Y:%m:%d %H:%M:%S')
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def places(self) -> List[geoutil.PlaceInfo]:
+        """Return a list of places associated with the image metadata."""
+        geo_util = geoutil.get_singleton_geo_util()
+        lat = self.metadata.get("GPSLatitude", None)
+        lon = self.metadata.get("GPSLongitude", None)
+        if lat is not None and lon is not None:
+            places = geo_util.get_nearby_places(lat=lat, lng=lon)
+            if places:
+                return places
+        return []
+
+    def __str__(self):
+        return f"ImageInfo(filename={self.filename}, metadata={self.metadata})"
 
 
 class ImageButton(wx.Button):
@@ -119,6 +160,7 @@ class ImageButton(wx.Button):
     The ImageButton stores the image filename and extracted metadata and
     will copy selected images into the project via FilesManager.
     """
+
     def __init__(self, image: str = None, *args, **kw):
         super().__init__(*args, **kw)
         self._size: Tuple[int, int] = kw.get('size')
@@ -148,7 +190,6 @@ class ImageButton(wx.Button):
 
     def set_image(self, filename: str) -> None:
         """Set the control's image, copy it into the project and extract metadata."""
-        print(f"Setting image: {filename}") 
         if filename is None:
             self.ResetBitmap()
             self._filename = None
@@ -165,13 +206,18 @@ class ImageButton(wx.Button):
         try:
             self.Refresh()
             self.Update()
-            parent : wx.Window = self.GetParent()
+            parent: wx.Window = self.GetParent()
             if parent is not None:
                 if hasattr(parent, 'on_image_changed'):
                     parent.on_image_changed(filename)
                 parent.Layout()
         except Exception:
             pass
+
+    @property
+    def image_info(self) -> ImageInfo:
+        """Return an ImageInfo object with the current filename and metadata."""
+        return ImageInfo(filename=self._filename, metadata=self._metadata)
 
     @property
     def metadata(self) -> dict:
@@ -189,31 +235,13 @@ class ImageButton(wx.Button):
         self.SetBitmap(bmp)
 
 
-# class NumberText(wx.TextCtrl):
-#     def __init__(self, value: int = None, on_change=None, *args, **kw):
-#         super().__init__(*args, **kw)
-#         self._on_change = on_change
-#         if value:
-#             self.SetValue(str(value))
-#         self.Bind(wx.EVT_TEXT, self._validate)
-    
-#     def _validate(self, event: wx.CommandEvent) -> None:
-#         if self._lines is None:
-#             return
-#         lines: int = self.GetNumberOfLines()
-#         if lines > self._lines:
-#             # Get the content of the TextCtrl up to the third line
-#             value: str = self.GetValue()
-#             content: List[str] = value.splitlines()[:self._lines]
-#             self.SetValue("\n".join(content))
-#             self.SetInsertionPointEnd()  # Move cursor to the end
-
 class Text(wx.TextCtrl):
     """Small Text control that optionally limits the number of lines.
 
     When attached inside a ScrolledPanel the mouse wheel will be propagated
     to the parent scrolling container to enable expected scroll behavior.
     """
+
     def __init__(self, value: str = None, lines: int = None, *args, **kw):
         if 'style' not in kw:
             kw['style'] = wx.TE_MULTILINE | wx.TE_NO_VSCROLL
@@ -244,9 +272,11 @@ class Text(wx.TextCtrl):
             self.SetValue("\n".join(content))
             self.SetInsertionPointEnd()  # Move cursor to the end
 
+
 class NumberText(Text):
     """Text control that restricts input to a single integer and calls a callback."""
-    def __init__(self, value :int = 0, on_change=None, *args, **kw):
+
+    def __init__(self, value: int = 0, on_change=None, *args, **kw):
         super().__init__(str(value), lines=1, *args, **kw)
         self._on_change = on_change
         self._last_value = value
@@ -256,7 +286,7 @@ class NumberText(Text):
         value_str = val.strip()
         if not value_str:
             value_str = ""
-        
+
         try:
             if value_str:
                 value = int(value_str)
@@ -278,6 +308,7 @@ class ScrolledPanel(scrolled.ScrolledPanel):
     Exposes Items(), Add(), Insert(), Sort(), Remove() and clear() helpers
     operating on the underlying vertical sizer.
     """
+
     def __init__(self, parent, *args, **kargs):
         super().__init__(parent, *args, **kargs)
         self.SetAutoLayout(1)

@@ -4,4 +4,7 @@ __pycache__/
 .vscode/
 .venv/
 .idea/
+.github/
 *.log
+.keys
+cache/

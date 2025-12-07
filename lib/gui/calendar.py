@@ -17,6 +17,8 @@ from typing import List, Tuple
 from lib.filemanager import FilesManager
 from lib.gui.util import ImageButton, Text, ScrolledPanel
 
+import datetime
+
 
 class ArtWorkInfoPanel(wx.Panel):
     """Panel that holds artwork image, description and simple metadata.
@@ -26,26 +28,39 @@ class ArtWorkInfoPanel(wx.Panel):
         image: path of the artwork image.
         description: textual description for the artwork.
     """
+
     def __init__(self, month: int, image: str = None, img_size: Tuple[int, int] = (200, 200), description: str = None, *args, **kw):
         super().__init__(*args, **kw)
         self._month = month
         self._sizer: wx.BoxSizer = wx.BoxSizer(wx.HORIZONTAL)
         self.SetSizer(self._sizer)
 
+        if self._month == 0:
+            month_name = "Cover Page"
+        else:
+            month_name = datetime.date(
+                2000, month if month > 0 else 1, 1).strftime("%B")
         # Image
         self._image_ctrl: ImageButton = ImageButton(
             image, size=img_size, parent=self, style=wx.BORDER_NONE)
 
         # Description
+        self._image_label: wx.StaticText = wx.StaticText(
+            parent=self, label=f"{month_name}")
         self._description_ctrl: Text = Text(value=description, lines=2, parent=self, size=(
             400, 50))
-            
-        self._metadata : Text = Text(value="", parent=self, style=wx.TE_READONLY|wx.TE_MULTILINE|wx.TE_NO_VSCROLL)
-        
+
+        self._metadata: Text = Text(
+            value="", parent=self, style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL)
+        self._places: wx.ComboBox = wx.ComboBox(
+            parent=self, style=wx.CB_DROPDOWN | wx.CB_READONLY, value="", choices=[])
+
         inputs_sizer = wx.BoxSizer(wx.VERTICAL)
 
+        inputs_sizer.Add(self._image_label, 0, wx.EXPAND | wx.ALL, 0)
         inputs_sizer.Add(self._description_ctrl, 0, wx.EXPAND | wx.ALL, 0)
         inputs_sizer.Add(self._metadata, 0, wx.EXPAND | wx.ALL, 0)
+        inputs_sizer.Add(self._places, 0, wx.EXPAND | wx.ALL, 0)
 
         self._sizer.Add(self._image_ctrl, 0, wx.ALL, 10)
         self._sizer.Add(inputs_sizer, 0, wx.EXPAND | wx.ALL, 10)
@@ -69,12 +84,40 @@ class ArtWorkInfoPanel(wx.Panel):
 
     def update_metadata(self):
         """Refresh the metadata text area from the image control."""
-        info = self._image_ctrl.metadata
+        image_info = self._image_ctrl.image_info
+        places = image_info.places
+        datetime_original = image_info.datetime_original
+
+        info = {}
+        if datetime_original is not None:
+            info_str = datetime_original.strftime("%b-%d")
+            info["Date"] = info_str
+
+        if places:
+            places_lst = []
+            for place in places:
+                places_lst.append(
+                    f"{place.name}, {place.city}, {place.country}")
+
+            self._places.Clear()
+            self._places.AppendItems(places_lst)
+            self._places.SetValue(places_lst[0] if places_lst else "")
+        else:
+            self._places.Clear()
+            self._places.SetValue("")
+
+            # place_names = [str(place) for place in places]
+            # for i, place in enumerate(places):
+            # print(f"Place {i+1}:", type(place))
+            # info[f"Place {i+1}"] = str(place)
+            # print(place_names)
+            # info["Places"] = "\n ".join(place_names)
+
         lines = []
         for key, value in info.items():
             lines.append(f"{key}: {value}\n")
         self._metadata.SetValue("".join(lines))
-                                
+
     def set_image(self, filename: str) -> None:
         """Set the artwork image and update metadata.
 
@@ -83,7 +126,6 @@ class ArtWorkInfoPanel(wx.Panel):
         """
         self._image_ctrl.set_image(filename)
         self.update_metadata()
-        print(f"Image set to: {filename}")
 
     def set_description(self, description: str) -> None:
         """Set the artwork description text."""
@@ -105,8 +147,10 @@ class ArtWorkInfoPanel(wx.Panel):
         """Callback invoked when the underlying image control's image changes."""
         self.update_metadata()
 
+
 class CalendarPagePanel(wx.Panel):
     """Panel containing the list of month artwork entries for a wall calendar."""
+
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
         self._scrolling_panel: ScrolledPanel = ScrolledPanel(self)
@@ -162,6 +206,7 @@ class CalendarPagePanel(wx.Panel):
 
 class DeskCalendarPanel(wx.Panel):
     """Panel containing artwork entries optimized for the desk calendar layout."""
+
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
         self._scrolling_panel: ScrolledPanel = ScrolledPanel(self)

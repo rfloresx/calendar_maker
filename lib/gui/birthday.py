@@ -80,7 +80,6 @@ class BirthdayInfoPanel(wx.Panel):
 
     def on_delete(self, event: wx.Event):
         """Handle deletion of this panel from its parent ScrolledPanel."""
-        print(self.Parent, self)
         if self.Parent and isinstance(self.Parent, ScrolledPanel):
             panel: ScrolledPanel = self.Parent
             panel.Remove(self)
