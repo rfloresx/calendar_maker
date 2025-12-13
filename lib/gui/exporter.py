@@ -68,7 +68,7 @@ class ExporterPanel(wx.Panel):
                     if img is None:
                         continue
                     fout = FilesManager.instance().get_file_path(f"WallCal/Page_{i}.png")
-                    img.save(str(fout))
+                    img.save(str(fout), dpi=(Settings.dpi, Settings.dpi))
 
 
     def on_export_desk_callendar(self, event: wx.Event):
@@ -78,7 +78,7 @@ class ExporterPanel(wx.Panel):
         if main_frame:
             cal = main_frame.get_desk_calendar()
 
-            with wx.ProgressDialog("Creating Wall Calendar", "Please wait...", maximum=13, style=wx.PD_SMOOTH | wx.PD_AUTO_HIDE) as progress_dialog:
+            with wx.ProgressDialog("Creating Desk Calendar", "Please wait...", maximum=13, style=wx.PD_SMOOTH | wx.PD_AUTO_HIDE) as progress_dialog:
                 imgs : List[PIL.Image.Image] = libdeskcal.ImageDrawer.draw(cal)
                 for i, img in enumerate(imgs):
                     progress_dialog.Update(i+1)
@@ -86,4 +86,9 @@ class ExporterPanel(wx.Panel):
                         continue
                     fout = FilesManager.instance().get_file_path(f"DeskCal/Page_{i}.png")
                     img.save(str(fout))
+
+                    fout = FilesManager.instance().get_file_path(f"DeskCalExt/Page_{i}.png")
+
+                    img_ext = libdeskcal.expan_to_legal(img)
+                    img_ext.save(str(fout))
 

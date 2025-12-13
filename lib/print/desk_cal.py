@@ -287,8 +287,85 @@ def DrawCalendar(self: _libcal.Calendar):
         yield calpage.page
 
 
-    # self.image
-    # self.title
+def expan_to_legal(image:PIL.Image.Image) -> PIL.Image.Image:
+    """
+    Takes a desk_callendar image (4.25x7), and tile out to a Legal(8.5x14) size
+    """
+    import PIL.ImageDraw
+    import PIL.ImageOps
+
+    if image is None:
+        raise ValueError("image must be a PIL.Image.Image")
+
+    # Determine pixels-per-inch from the input image using the desk size
+    # Desk page logical size is 7in x 4.25in (width x height)
+    try:
+        ppi_w = image.width / DeskCalSize.WIDTH
+        ppi_h = image.height / DeskCalSize.HEIGHT
+    except Exception:
+        raise ValueError("invalid image size")
+
+    # Use the average PPI (they should match if the image was created by this lib)
+    ppi = int(round((ppi_w + ppi_h) / 2.0))
+    if ppi <= 0:
+        ppi = 300
+
+    # Sizes for desk tile in pixels (7in x 4.25in)
+    tile_w = int(round(DeskCalSize.WIDTH * ppi))
+    tile_h = int(round(DeskCalSize.HEIGHT * ppi))
+
+    # Ensure input image matches expected tile pixels or will be resized
+    if (image.width, image.height) != (tile_w, tile_h):
+        img = image.resize((tile_w, tile_h), resample=PIL.Image.LANCZOS)
+    else:
+        img = image
+
+    # Output (legal landscape) size in pixels: 14in x 8.5in (W x H)
+    out_w = int(round(14.0 * ppi))
+    out_h = int(round(8.5 * ppi))
+
+    canvas = PIL.Image.new(mode="RGB", size=(out_w, out_h), color="white")
+
+    # Positions for 2x2 grid
+    positions = [
+        (0, 0),                 # top-left (upright)
+        (tile_w, 0),            # top-right (upright)
+        (0, tile_h),            # bottom-left (rotated 180)
+        (tile_w, tile_h),       # bottom-right (rotated 180)
+    ]
+
+    # Paste top row upright, bottom row rotated 180
+    canvas.paste(img, positions[0])
+    canvas.paste(img, positions[1])
+
+    rotated_180 = img.rotate(180)
+    canvas.paste(rotated_180, positions[2])
+    canvas.paste(rotated_180, positions[3])
+
+    # Draw dashed cut lines at center between tiles
+    draw = PIL.ImageDraw.Draw(canvas)
+    center_x = tile_w
+    center_y = tile_h
+
+    dash_len = max(6, int(round(ppi * 0.03)))
+    gap_len = dash_len
+
+    # Vertical dashed line
+    y = 0
+    while y < out_h:
+        y2 = min(y + dash_len, out_h)
+        draw.line([(center_x, y), (center_x, y2)], fill="black", width=1)
+        y += dash_len + gap_len
+
+    # Horizontal dashed line
+    x = 0
+    while x < out_w:
+        x2 = min(x + dash_len, out_w)
+        draw.line([(x, center_y), (x2, center_y)], fill="black", width=1)
+        x += dash_len + gap_len
+
+    return canvas
+
 if __name__ == "__main__":
     fm = FilesManager("resources")
     # test_image = "images/PXL_COVER.jpg"
