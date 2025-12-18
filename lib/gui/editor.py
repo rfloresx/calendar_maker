@@ -20,6 +20,7 @@ import wx.lib.agw.flatnotebook as fnb
 import datetime
 import pathlib
 import json
+import copy
 
 import lib.calendar.ics_loader as libics
 import lib.pycal as libpycal
@@ -66,6 +67,9 @@ class CalendarInfoFrame(MainFrame):
         with self._files_manager.open("Project.json", "w+") as file:
             obj = self.to_json()
             file.write(json.dumps(obj, indent="    "))
+            self._last_saved_state = copy.deepcopy(obj)
+            self._has_unsaved_changes = False
+            self._update_title()
 
     def menu_handler(self, event: wx.Event) -> None:
         """Handle file menu actions (new/open/save)."""
@@ -82,9 +86,14 @@ class CalendarInfoFrame(MainFrame):
         super().__init__(*args, **kw)
 
         self._files_manager: FilesManager = FilesManager("tmp")
+        self._has_unsaved_changes: bool = False
+        self._last_saved_state: dict = None
 
         self.SetTitle("Calendar Editor")
         self.SetSize(800, 600)
+        
+        # Bind close event
+        self.Bind(wx.EVT_CLOSE, self.on_close)
 
         # Menu bar
         menubar = wx.MenuBar()
@@ -139,6 +148,11 @@ class CalendarInfoFrame(MainFrame):
         self.notebook.AddPage(self._export_view, "Export")
         self.notebook.AddPage(self._settings_view, "Settings")
         
+        # Set up timer to periodically check for changes
+        self._change_check_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._check_for_changes, self._change_check_timer)
+        self._change_check_timer.Start(1000)  # Check every second
+        
         sizer.Add(self.notebook, 1, flag=wx.EXPAND)
 
         try:
@@ -160,6 +174,9 @@ class CalendarInfoFrame(MainFrame):
         self._desk_pages_view.load(data.get("desk_pages", {}))
         self._birthday_view.load(data.get("birthdays", {}))
         self._settings_view.load(data.get("settings", {}))
+        self._last_saved_state = copy.deepcopy(data)
+        self._has_unsaved_changes = False
+        self._update_title()
 
     def to_json(self) -> dict:
         """Serialize the editor state into a JSON-serializable dict."""
@@ -180,6 +197,9 @@ class CalendarInfoFrame(MainFrame):
         self._desk_pages_view.clear()
         self._birthday_view.clear()
         self._settings_view.clear()
+        self._last_saved_state = None
+        self._has_unsaved_changes = False
+        self._update_title()
 
     def get_vcalendar(self) -> libics.VCalendar:
         """Collect birthdays from the UI and return a VCalendar instance."""
@@ -226,6 +246,54 @@ class CalendarInfoFrame(MainFrame):
             arts[i-1].image = page.image
             arts[i-1].title = page.description
         return cal
+
+    def _check_for_changes(self, event=None):
+        """Periodically check if current state differs from saved state."""
+        if self._last_saved_state is not None:
+            current_state = self.to_json()
+            has_changes = self._last_saved_state != current_state
+            if has_changes != self._has_unsaved_changes:
+                self._has_unsaved_changes = has_changes
+                self._update_title()
+
+    def on_content_changed(self, event=None):
+        """Mark that content has changed (unsaved changes)."""
+        if event:
+            event.Skip()
+        current_state = self.to_json()
+        if self._last_saved_state != current_state:
+            self._has_unsaved_changes = True
+            self._update_title()
+
+    def _update_title(self):
+        """Update window title to show unsaved changes indicator."""
+        base_title = "Calendar Editor"
+        if self._has_unsaved_changes:
+            self.SetTitle(f"{base_title} *")
+        else:
+            self.SetTitle(base_title)
+
+    def on_close(self, event):
+        """Handle window close event and prompt if there are unsaved changes."""
+        if self._has_unsaved_changes:
+            dlg = wx.MessageDialog(
+                self,
+                "You have unsaved changes. Do you want to save before closing?",
+                "Unsaved Changes",
+                wx.YES_NO | wx.CANCEL | wx.ICON_WARNING
+            )
+            result = dlg.ShowModal()
+            dlg.Destroy()
+            
+            if result == wx.ID_YES:
+                self.project_save(None)
+                event.Skip()  # Continue with close
+            elif result == wx.ID_NO:
+                event.Skip()  # Continue with close without saving
+            else:  # wx.ID_CANCEL
+                event.Veto()  # Cancel the close
+        else:
+            event.Skip()  # No unsaved changes, close normally
 
 class MyApp(wx.App):
     """Simple wx.App subclass used to start the editor application."""

@@ -12,10 +12,12 @@ except:
     sys.path.append(dirname(dirname(dirname(__file__))))
 
 import wx
+import re
 
 from typing import List, Tuple
 from lib.filemanager import FilesManager
 from lib.gui.util import ImageButton, Text, ScrolledPanel
+from lib.gui.settings import Settings
 
 import datetime
 
@@ -32,39 +34,81 @@ class ArtWorkInfoPanel(wx.Panel):
     def __init__(self, month: int, image: str = None, img_size: Tuple[int, int] = (200, 200), description: str = None, *args, **kw):
         super().__init__(*args, **kw)
         self._month = month
-        self._sizer: wx.BoxSizer = wx.BoxSizer(wx.HORIZONTAL)
+        self._selected_place_index = 0  # Track selected place index
+        self._place_overrides = {}  # Store user edits to place properties
+        self._sizer: wx.BoxSizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(self._sizer)
 
         if self._month == 0:
-            month_name = "Cover Page"
+            artwork_name = "Cover Page"
         else:
-            month_name = datetime.date(
+            artwork_name = datetime.date(
                 2000, month if month > 0 else 1, 1).strftime("%B")
+        self._artwork_label: wx.StaticText = wx.StaticText(
+            parent=self, label=f"{artwork_name}", size=(400, 25))
+
         # Image
         self._image_ctrl: ImageButton = ImageButton(
             image, size=img_size, parent=self, style=wx.BORDER_NONE)
 
         # Description
-        self._image_label: wx.StaticText = wx.StaticText(
-            parent=self, label=f"{month_name}")
         self._description_ctrl: Text = Text(value=description, lines=2, parent=self, size=(
             400, 50))
+        self._description_ctrl.Bind(wx.EVT_TEXT, self._on_description_changed)
+
+        # Formatted description preview
+        self._formatted_description: Text = Text(
+            value="", parent=self, style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=(400, 50))
 
         self._metadata: Text = Text(
-            value="", parent=self, style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL)
+            value="", parent=self, style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_NO_VSCROLL, size=(400, 50))
         self._places: wx.ComboBox = wx.ComboBox(
             parent=self, style=wx.CB_DROPDOWN | wx.CB_READONLY, value="", choices=[])
+        self._places.Bind(wx.EVT_COMBOBOX, self._on_place_selected)
+
+        # Editable place fields
+        place_edit_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Name field
+        name_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        name_sizer.Add(wx.StaticText(self, label="Name:"), 0,
+                       wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        self._place_name_ctrl = wx.TextCtrl(self, size=(-1, -1))
+        self._place_name_ctrl.Bind(wx.EVT_TEXT, self._on_place_field_changed)
+        name_sizer.Add(self._place_name_ctrl, 1, wx.EXPAND)
+        place_edit_sizer.Add(name_sizer, 0, wx.EXPAND | wx.BOTTOM, 5)
+
+        # City and State on same line
+        city_state_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        city_state_sizer.Add(wx.StaticText(self, label="City:"),
+                             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        self._place_city_ctrl = wx.TextCtrl(self, size=(-1, -1))
+        self._place_city_ctrl.Bind(wx.EVT_TEXT, self._on_place_field_changed)
+        city_state_sizer.Add(self._place_city_ctrl, 1,
+                             wx.EXPAND | wx.RIGHT, 10)
+
+        city_state_sizer.Add(wx.StaticText(
+            self, label="State:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        self._place_state_ctrl = wx.TextCtrl(self, size=(-1, -1))
+        self._place_state_ctrl.Bind(wx.EVT_TEXT, self._on_place_field_changed)
+        city_state_sizer.Add(self._place_state_ctrl, 1, wx.EXPAND)
+        place_edit_sizer.Add(city_state_sizer, 0, wx.EXPAND)
 
         inputs_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        inputs_sizer.Add(self._image_label, 0, wx.EXPAND | wx.ALL, 0)
         inputs_sizer.Add(self._description_ctrl, 0, wx.EXPAND | wx.ALL, 0)
+        inputs_sizer.Add(self._formatted_description, 0, wx.EXPAND | wx.ALL, 0)
         inputs_sizer.Add(self._metadata, 0, wx.EXPAND | wx.ALL, 0)
         inputs_sizer.Add(self._places, 0, wx.EXPAND | wx.ALL, 0)
+        inputs_sizer.Add(place_edit_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
-        self._sizer.Add(self._image_ctrl, 0, wx.ALL, 10)
-        self._sizer.Add(inputs_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        call_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        call_sizer.Add(self._image_ctrl, 0, wx.LEFT | wx.RIGHT, 10)
+        call_sizer.Add(inputs_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
+        self._sizer.Add(wx.StaticLine(self), 0, wx.EXPAND | wx.ALL, 5)
+        self._sizer.Add(self._artwork_label, 0, wx.LEFT | wx.RIGHT, 10)
+        self._sizer.Add(call_sizer, 0, wx.EXPAND | wx.ALL, 0)
         self.update_metadata()
 
     @property
@@ -77,10 +121,129 @@ class ArtWorkInfoPanel(wx.Panel):
         """Path to the selected artwork image (may be None)."""
         return self._image_ctrl.filename
 
+    def _on_place_selected(self, event):
+        """Handle place selection change from combo box."""
+        self._selected_place_index = self._places.GetSelection()
+        self._populate_place_fields()
+        self._update_formatted_description()
+
+    def _on_description_changed(self, event):
+        """Handle description text change to update formatted preview."""
+        self._update_formatted_description()
+
+    def _on_place_field_changed(self, event):
+        """Handle changes to place edit fields."""
+        # Store overrides for the current place index
+        if self._selected_place_index >= 0:
+            self._place_overrides[self._selected_place_index] = {
+                'name': self._place_name_ctrl.GetValue(),
+                'city': self._place_city_ctrl.GetValue(),
+                'state': self._place_state_ctrl.GetValue()
+            }
+        self._update_formatted_description()
+
+    def _populate_place_fields(self):
+        """Populate place edit fields with current place data."""
+        image_info = self._image_ctrl.image_info
+        places = image_info.places
+
+        # Check if we have overrides first (works even without metadata places)
+        if self._selected_place_index in self._place_overrides:
+            overrides = self._place_overrides[self._selected_place_index]
+            self._place_name_ctrl.ChangeValue(overrides.get('name', ''))
+            self._place_city_ctrl.ChangeValue(overrides.get('city', ''))
+            self._place_state_ctrl.ChangeValue(overrides.get('state', ''))
+        elif places and self._selected_place_index < len(places):
+            # Use original place data if available
+            place = places[self._selected_place_index]
+            self._place_name_ctrl.ChangeValue(place.name or '')
+            self._place_city_ctrl.ChangeValue(place.city or '')
+            self._place_state_ctrl.ChangeValue(place.state or '')
+        else:
+            # No places and no overrides - clear fields but leave them editable
+            self._place_name_ctrl.ChangeValue('')
+            self._place_city_ctrl.ChangeValue('')
+            self._place_state_ctrl.ChangeValue('')
+
+    def _update_formatted_description(self):
+        """Update the formatted description preview."""
+        formatted = self._process_description_template(
+            self._description_ctrl.GetValue())
+        self._formatted_description.SetValue(formatted)
+
     @property
     def description(self) -> str:
-        """Description text for the artwork."""
-        return self._description_ctrl.GetValue()
+        """Description text for the artwork with template replacements applied."""
+        return self._process_description_template(self._description_ctrl.GetValue())
+
+    def _process_description_template(self, template: str) -> str:
+        """Process template string with variable replacements.
+
+        Supported replacements:
+            {year} - Current calendar year from Settings
+            {date:format} - Image date with custom strftime format (e.g., {date:%b %d})
+            {place.name} - Name of the selected place in image metadata
+            {place.city} - City of the selected place
+            {place.state} - State of the selected place
+            {place.country} - Country of the selected place
+            {place.address} - Full address of the selected place
+            {place.rating} - Rating of the selected place
+        """
+        if not template:
+            return template
+
+        result = template
+        image_info = self._image_ctrl.image_info
+
+        # Replace {year}
+        result = result.replace("{year}", str(Settings().year))
+
+        # Replace {date:format} with strftime format
+        if image_info.datetime_original is not None:
+            # Find all {date:...} patterns
+            date_pattern = r'\{date:([^}]+)\}'
+            for match in re.finditer(date_pattern, result):
+                format_str = match.group(1)
+                formatted_date = image_info.datetime_original.strftime(
+                    format_str)
+                result = result.replace(match.group(0), formatted_date)
+
+        # Replace {place.*} properties using getattr with override support
+        # Check for overrides first (even if no metadata places exist)
+        place_pattern = r'\{place\.(\w+)\}'
+
+        if self._selected_place_index in self._place_overrides:
+            # Use manual overrides when available
+            for match in re.finditer(place_pattern, result):
+                property_name = match.group(1)
+                value = self._place_overrides[self._selected_place_index].get(
+                    property_name, "")
+                value = str(value) if value is not None else ""
+                result = result.replace(match.group(0), value)
+        elif image_info.places and len(image_info.places) > 0:
+            # Use metadata places if available and no overrides
+            place_idx = min(self._selected_place_index,
+                            len(image_info.places) - 1)
+            selected_place = image_info.places[place_idx]
+
+            for match in re.finditer(place_pattern, result):
+                property_name = match.group(1)
+                try:
+                    value = getattr(selected_place, property_name, "")
+                    # Handle NaN for numeric values like rating
+                    if isinstance(value, float) and value != value:  # NaN check
+                        value = ""
+                    else:
+                        value = str(value) if value is not None else ""
+                    result = result.replace(match.group(0), value)
+                except AttributeError:
+                    result = result.replace(match.group(0), "")
+        else:
+            # Clear all {place.*} placeholders when no place is available
+            place_pattern = r'\{place\.\w+\}'
+            result = re.sub(place_pattern, "", result)
+
+        return result
 
     def update_metadata(self):
         """Refresh the metadata text area from the image control."""
@@ -97,26 +260,31 @@ class ArtWorkInfoPanel(wx.Panel):
             places_lst = []
             for place in places:
                 places_lst.append(
-                    f"{place.name}, {place.city}, {place.country}")
+                    f"{place.name}, {place.city}, {place.state}")
 
             self._places.Clear()
             self._places.AppendItems(places_lst)
-            self._places.SetValue(places_lst[0] if places_lst else "")
+            # Restore selected index, default to 0 if out of bounds
+            if self._selected_place_index < len(places_lst):
+                self._places.SetSelection(self._selected_place_index)
+            else:
+                self._selected_place_index = 0
+                self._places.SetSelection(0)
         else:
+            # No places in metadata - still allow manual entry
             self._places.Clear()
-            self._places.SetValue("")
-
-            # place_names = [str(place) for place in places]
-            # for i, place in enumerate(places):
-            # print(f"Place {i+1}:", type(place))
-            # info[f"Place {i+1}"] = str(place)
-            # print(place_names)
-            # info["Places"] = "\n ".join(place_names)
+            self._selected_place_index = 0
 
         lines = []
         for key, value in info.items():
             lines.append(f"{key}: {value}\n")
         self._metadata.SetValue("".join(lines))
+
+        # Populate place edit fields
+        self._populate_place_fields()
+
+        # Update formatted description when metadata changes
+        self._update_formatted_description()
 
     def set_image(self, filename: str) -> None:
         """Set the artwork image and update metadata.
@@ -135,12 +303,30 @@ class ArtWorkInfoPanel(wx.Panel):
         """Load panel state from a dictionary as produced by to_json."""
         self.set_image(data["image"])
         self.set_description(data["description"])
+        # Load selected place index if available
+        if "selected_place_index" in data:
+            self._selected_place_index = data["selected_place_index"]
+            # Update combo box selection after image is loaded
+            if self._places.GetCount() > self._selected_place_index:
+                self._places.SetSelection(self._selected_place_index)
+        # Load place overrides if available
+        if "place_overrides" in data:
+            # Convert string keys back to integers
+            self._place_overrides = {
+                int(k): v for k, v in data["place_overrides"].items()}
+            self._populate_place_fields()
+            self._update_formatted_description()
 
     def to_json(self) -> dict:
         """Serialize the panel to a JSON-serializable dictionary."""
         data = {}
         data["image"] = FilesManager.instance().get_relative_path(self.image)
-        data["description"] = self.description
+        # Save raw template, not processed
+        data["description"] = self._description_ctrl.GetValue()
+        data["selected_place_index"] = self._selected_place_index
+        # Save place overrides (convert int keys to strings for JSON)
+        data["place_overrides"] = {
+            str(k): v for k, v in self._place_overrides.items()}
         return data
 
     def on_image_changed(self, event):
