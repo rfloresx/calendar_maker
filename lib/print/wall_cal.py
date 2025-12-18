@@ -352,11 +352,6 @@ def DrawCalendar(self: _libcal.Calendar):
     for page in self.pages:
         yield ImageDrawer.draw(page.art)
         yield ImageDrawer.draw(page.month)
-        # calpage = DeskCalendarPage(img)
-        # calpage.set_calendar(cal)
-    #     images.append(img) 
-    #     images.append(cal)
-    # return images
 
 if __name__ == "__main__":
     fm = FilesManager("resources")

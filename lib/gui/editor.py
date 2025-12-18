@@ -32,7 +32,6 @@ from lib.gui.util import OpenDialog, MainFrame
 from lib.gui.birthday import BirthdayPanel
 from lib.gui.calendar import CalendarPagePanel, DeskCalendarPanel
 from lib.gui.exporter import ExporterPanel
-from lib.gui.settings import SettingsPanel
 from lib.gui.settings import Settings
 
 ######################################################
@@ -138,15 +137,11 @@ class CalendarInfoFrame(MainFrame):
             parent=self.notebook)
         self._export_view: ExporterPanel = ExporterPanel(
             parent=self.notebook)
-        
-        self._settings_view: SettingsPanel = SettingsPanel(
-            parent=self.notebook)
 
         self.notebook.AddPage(self._wall_pages_view, "Wall Pages")
         self.notebook.AddPage(self._desk_pages_view, "Desk Calendar")
         self.notebook.AddPage(self._birthday_view, "Birthdays")
         self.notebook.AddPage(self._export_view, "Export")
-        self.notebook.AddPage(self._settings_view, "Settings")
         
         # Set up timer to periodically check for changes
         self._change_check_timer = wx.Timer(self)
@@ -173,7 +168,8 @@ class CalendarInfoFrame(MainFrame):
         self._wall_pages_view.load(data.get("artworks", {}))
         self._desk_pages_view.load(data.get("desk_pages", {}))
         self._birthday_view.load(data.get("birthdays", {}))
-        self._settings_view.load(data.get("settings", {}))
+        # Load settings directly into Settings singleton for backward compatibility
+        Settings.load(data.get("settings", {}))
         self._last_saved_state = copy.deepcopy(data)
         self._has_unsaved_changes = False
         self._update_title()
@@ -185,7 +181,7 @@ class CalendarInfoFrame(MainFrame):
         data["artworks"] = self._wall_pages_view.to_json()
         data["desk_pages"] = self._desk_pages_view.to_json()
         data["birthdays"] = self._birthday_view.to_json()
-        data["settings"] = self._settings_view.to_json()
+        data["settings"] = Settings.to_json()
 
         return data
 
@@ -196,7 +192,6 @@ class CalendarInfoFrame(MainFrame):
         self._wall_pages_view.clear()
         self._desk_pages_view.clear()
         self._birthday_view.clear()
-        self._settings_view.clear()
         self._last_saved_state = None
         self._has_unsaved_changes = False
         self._update_title()
