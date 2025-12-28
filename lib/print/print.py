@@ -12,6 +12,8 @@ import PIL.ImageDraw
 import PIL.ImageFont
 
 from typing import Iterable, List
+import lib.print.draw as _libdraw
+from lib.print.decoder_base import DecoderBase
 
 PRINT_DPI = 600
 # PRINT_DPI = 300
@@ -33,8 +35,8 @@ def in_to_mm(inches: float) -> float:
 
 
 def mm_to_in(mm: float) -> float:
-    """Convert millimeters to inches."""
-    return mm / 25.4
+    """Convert millimeters to inches (delegates to draw.Resolution)."""
+    return _libdraw.Resolution.mm_to_in(mm)
 
 
 def in_to_pt(inches: float) -> int:
@@ -68,29 +70,11 @@ def scale(orig_size: tuple, new_size: tuple) -> tuple:
 
 
 def resize_cover(image: PIL.Image.Image, size: tuple) -> PIL.Image.Image:
-    """Resize an image to cover the target size, maintaining aspect ratio."""
-    width, height = image.size
-    orig_ratio = width / height
+    """Resize an image to cover the target size, maintaining aspect ratio.
 
-    target_width, target_height = size
-
-    # Determine which dimension to scale
-    if orig_ratio > 1:
-        new_width = target_width
-        new_height = int(target_width/orig_ratio)
-    else:
-        new_height = target_height
-        new_width = int(target_height * orig_ratio)
-
-    # Resize and crop
-    resized_image = image.resize(
-        (new_width, new_height), PIL.Image.Resampling.LANCZOS)
-    x_offset = (new_width - target_width) // 2
-    y_offset = (new_height - target_height) // 2
-    cropped_image = resized_image.crop(
-        (x_offset, y_offset, x_offset + target_width, y_offset + target_height))
- 
-    return cropped_image
+    Delegates to `_libdraw._resize_cover` to keep logic centralized.
+    """
+    return _libdraw._resize_cover(image, size)
 
 
 def center(left, top, right, bottom) -> tuple:
@@ -363,29 +347,20 @@ def bbox(pos, size):
     """Calculate a bounding box from a position and size."""
     return (pos[0], pos[1], size[0]+pos[0], size[1]+pos[1])
 
-class PrintDecoder:
+class PrintDecoder(DecoderBase):
     """Decoder that dispatches drawing for registered object types."""
     def __init__(self):
-        self._handlers = {}
-    
-    def draw(self, obj) -> PIL.Image:
+        super().__init__()
+
+    def draw(self, obj) -> PIL.Image.Image:
         """Dispatch drawing for a registered object type or call __draw__."""
         type_ = type(obj)
-        ret = None
-        if type_ in self._handlers:
-            ret = self._handlers[type_](obj)
-        elif hasattr(obj, '__draw__'):
-            ret = obj.__draw__()
-        else:
-            raise ValueError(f"Unsuported Type {type_}")
-        return ret    
-
-    def override(self, _type:type):
-        """Register a custom handler for a specific type."""
-        def handler(func):
-            self._handlers[_type] = func
-            return func
-        return handler
+        fn = self.get_handler(type_)
+        if fn is not None:
+            return fn(obj)
+        if hasattr(obj, '__draw__'):
+            return obj.__draw__()
+        raise ValueError(f"Unsuported Type {type_}")
 
 if __name__ == "__main__":
     front_page = FrontPage('resources/images/PXL_COVER.jpg', 'CALENDAR\n2025')

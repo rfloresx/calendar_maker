@@ -34,6 +34,31 @@ def get_image_metadata(image: str) -> dict:
 
     result = {}
     try:
+        # Fast path: let piexif parse the file directly when possible (e.g., JPEG)
+        try:
+            exif_dict = piexif.load(image)
+            exif = exif_dict.get('Exif', {})
+
+            dto = exif.get(piexif.ExifIFD.DateTimeOriginal, None)
+            if isinstance(dto, bytes):
+                try:
+                    dto = dto.decode('utf-8')
+                except Exception:
+                    dto = str(dto)
+            if dto is not None:
+                result["DateTimeOriginal"] = dto
+
+            lat, lon, alt = gps_from_exif(exif_dict)
+            if lat is not None and lon is not None:
+                result["GPSLatitude"] = lat
+                result["GPSLongitude"] = lon
+            if alt is not None:
+                result["GPSAltitude"] = alt
+            return result
+        except Exception:
+            pass
+
+        # Fallback: open with PIL and extract embedded EXIF bytes
         with PIL.Image.open(image) as im:
             exif_bytes = im.info.get("exif")
             if not exif_bytes:
@@ -42,17 +67,15 @@ def get_image_metadata(image: str) -> dict:
             exif_dict = piexif.load(exif_bytes)
             exif = exif_dict.get('Exif', {})
 
-            # DateTimeOriginal (may be bytes)
             dto = exif.get(piexif.ExifIFD.DateTimeOriginal, None)
             if isinstance(dto, bytes):
                 try:
                     dto = dto.decode('utf-8')
                 except Exception:
                     dto = str(dto)
-            result["DateTimeOriginal"] = dto
+            if dto is not None:
+                result["DateTimeOriginal"] = dto
 
-            # gps = exif_dict.get('GPS', {})
-            # result["GPSInfo"] = gps
             lat, lon, alt = gps_from_exif(exif_dict)
             if lat is not None and lon is not None:
                 result["GPSLatitude"] = lat
@@ -405,3 +428,128 @@ class MainFrame(wx.Frame):
 
     def get_desk_calendar(self) -> libpycal.Calendar:
         return None
+
+class TextTemplate:
+    def __init__(self, template: str = ""):
+        self.template = template
+
+    def render(self, context: dict) -> str:
+        """Render the template using a generic key/value context mapping.
+
+        Placeholders support optional format specifiers: {key} or {key:fmt}.
+        When a format is provided and the value is a datetime, strftime(fmt)
+        is applied. Otherwise the value is converted to string.
+        Missing keys render as empty strings.
+        """
+        import re
+        text = self.template or ""
+        if not text:
+            return text
+
+        pattern = r"\{([A-Za-z0-9_.]+)(?::([^}]+))?\}"
+
+        def replace(m: re.Match) -> str:
+            key = m.group(1)
+            fmt = m.group(2)
+            value = context.get(key, "")
+            # Normalize NaN floats
+            try:
+                if isinstance(value, float) and value != value:
+                    value = ""
+            except Exception:
+                pass
+            if fmt and isinstance(value, datetime.datetime):
+                try:
+                    return value.strftime(fmt)
+                except Exception:
+                    return ""
+            return "" if value is None else str(value)
+
+        return re.sub(pattern, replace, text)
+
+
+def extract_place_info(image_info: ImageInfo, selected_place_index: int = 0, overrides: dict = None) -> dict:
+    """Extract place-related variables from `image_info` with optional overrides.
+
+    Returns a dictionary suitable for template substitution, including keys:
+    - "place.name", "place.city", "place.state", "place.country",
+      "place.address", "place.rating"
+    - "img.date" (formatted as YYYY-MM-DD when available, else empty)
+
+    Args:
+        image_info: ImageInfo with metadata and places.
+        selected_place_index: Index of the place to use from metadata.
+        overrides: Optional dict providing manual values for place fields.
+
+    Returns:
+        dict mapping placeholder keys to string values.
+    """
+    ctx = {
+        "place.name": "",
+        "place.city": "",
+        "place.state": "",
+        "place.country": "",
+        "place.address": "",
+        "place.rating": "",
+        "img.date": "",
+    }
+
+    # Date (ISO-style default)
+    dt = getattr(image_info, "datetime_original", None)
+    if dt is not None:
+        try:
+            ctx["img.date"] = dt.strftime("%Y-%m-%d")
+        except Exception:
+            ctx["img.date"] = ""
+
+    # Place info
+    if overrides and isinstance(overrides, dict) and any(v is not None and v != "" for v in overrides.values()):
+        # Use provided overrides
+        ctx["place.name"] = str(overrides.get("name", "") or "")
+        ctx["place.city"] = str(overrides.get("city", "") or "")
+        ctx["place.state"] = str(overrides.get("state", "") or "")
+        ctx["place.country"] = str(overrides.get("country", "") or "")
+        ctx["place.address"] = str(overrides.get("address", "") or "")
+        rating = overrides.get("rating", "")
+        try:
+            ctx["place.rating"] = "" if (isinstance(rating, float) and rating != rating) else str(rating or "")
+        except Exception:
+            ctx["place.rating"] = str(rating or "")
+        return ctx
+
+    # Fallback to metadata places
+    places = getattr(image_info, "places", [])
+    if places:
+        try:
+            idx = max(0, min(int(selected_place_index), len(places) - 1))
+        except Exception:
+            idx = 0
+        place = places[idx]
+        try:
+            ctx["place.name"] = str(getattr(place, "name", "") or "")
+            ctx["place.city"] = str(getattr(place, "city", "") or "")
+            ctx["place.state"] = str(getattr(place, "state", "") or "")
+            ctx["place.country"] = str(getattr(place, "country", "") or "")
+            ctx["place.address"] = str(getattr(place, "address", "") or "")
+            rating = getattr(place, "rating", "")
+            ctx["place.rating"] = "" if (isinstance(rating, float) and rating != rating) else str(rating or "")
+        except Exception:
+            pass
+    # If no places, leave placeholders empty strings
+    return ctx
+
+
+def build_text_context(image_info: ImageInfo, selected_place_index: int = 0, overrides: dict = None, year: int = None) -> dict:
+    """Build a full context dictionary for TextTemplate rendering.
+
+    Includes place.* keys, a raw datetime under "date", a default formatted
+    string under "img.date" (YYYY-MM-DD), and the optional "year" value.
+    """
+    ctx = extract_place_info(image_info, selected_place_index, overrides)
+    # raw datetime for {date:%...}
+    ctx["date"] = getattr(image_info, "datetime_original", None)
+    if year is not None:
+        ctx["year"] = year
+    return ctx
+    
+

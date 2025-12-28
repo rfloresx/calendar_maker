@@ -21,6 +21,7 @@ import lib.calendar.ics_loader as libics
 
 from lib.filemanager import FilesManager
 from lib.gui.util import ImageButton, OpenDialog, ScrolledPanel
+from lib.gui.panel_mixins import DeleteFromScrolledPanelMixin, ImageSetterMixin
 from typing import List
 
 
@@ -37,7 +38,7 @@ class AspectRations:
     ART_PAGE_SCALE = 15/10
 
 
-class BirthdayInfoPanel(wx.Panel):
+class BirthdayInfoPanel(wx.Panel, DeleteFromScrolledPanelMixin, ImageSetterMixin):
     """Panel representing a single birthday entry with image, title and date.
 
     Public properties:
@@ -78,13 +79,7 @@ class BirthdayInfoPanel(wx.Panel):
         self._sizer.Add(self._image_ctrl, 0, wx.ALL, 10)
         self._sizer.Add(inputs_sizer, 0, wx.EXPAND | wx.ALL, 10)
 
-    def on_delete(self, event: wx.Event):
-        """Handle deletion of this panel from its parent ScrolledPanel."""
-        if self.Parent and isinstance(self.Parent, ScrolledPanel):
-            panel: ScrolledPanel = self.Parent
-            panel.Remove(self)
-            self.Destroy()
-            panel.Refresh()
+    # on_delete from DeleteFromScrolledPanelMixin
 
     @property
     def image(self) -> str:
@@ -103,9 +98,7 @@ class BirthdayInfoPanel(wx.Panel):
         return datetime.datetime(wx_dt.GetYear(), wx_dt.GetMonth() + 1, wx_dt.GetDay(),
                                  wx_dt.GetHour(), wx_dt.GetMinute(), wx_dt.GetSecond())
 
-    def set_image(self, filename: str) -> None:
-        """Set the displayed image for this birthday entry."""
-        self._image_ctrl.set_image(filename)
+    # set_image from ImageSetterMixin
 
     def set_title(self, value: str) -> None:
         """Set the title text for this birthday entry."""

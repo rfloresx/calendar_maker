@@ -20,6 +20,14 @@ from typing import List
 from lib.calendar.moon_calendar import _MoonCalendar
 
 import lib.print.draw as _libdraw
+from lib.print.wall_cal_base import (
+    WallCalPageBase,
+    FrontPageLayoutBase,
+    ArtPageLayoutBase,
+    CalendarPageLayoutBase,
+    MoonPhaseImages,
+    DrawCell as _DrawCell,
+)
 
 from lib.filemanager import FilesManager
 
@@ -29,7 +37,7 @@ _libdraw.Resolution.unit = _libdraw.Units.IN
 ImageDrawer = _libdraw.DrawDecoder()
 
 
-class WallCalPage:
+class WallCalPage(WallCalPageBase):
     """Base layout class describing a printable wall calendar page.
 
     Subclasses define padding and provide helper methods to compute bounding
@@ -40,71 +48,8 @@ class WallCalPage:
     BIND_PADDING = 0.0
     PADDING = (0, 0, 0, 0)
 
-    def __init__(self, color='white'):
-        self._page = _libdraw.Image.new(
-            size=(self.width, self.height), color=color)
 
-    @property
-    def left_padding(self) -> float:
-        """Left page padding in inches."""
-        return self.PADDING[0]
-
-    @property
-    def top_padding(self) -> float:
-        """Top page padding in inches."""
-        return self.PADDING[1]
-
-    @property
-    def right_padding(self) -> float:
-        """Right page padding in inches."""
-        return self.PADDING[2]
-
-    @property
-    def bot_padding(self) -> float:
-        """Bottom page padding in inches."""
-        return self.PADDING[3]
-
-    @property
-    def width(self) -> float:
-        """Page width in inches."""
-        return self.WIDTH
-
-    @property
-    def height(self) -> float:
-        """Page height in inches."""
-        return self.HEIGHT
-
-    @property
-    def page(self) -> _libdraw.Image:
-        """Return the underlying drawing surface (lib.print.draw.Image)."""
-        return self._page
-
-    def main_bbox(self) -> _libdraw.BBox:
-        """Return the main content BBox for this page."""
-        left = self.left_padding
-        top = self.top_padding
-        right = self.width - self.right_padding
-        bot = self.height - self.bot_padding
-        return _libdraw.BBox(left, top, right, bot)
-
-    def draw_image(self, image: str, bbox: _libdraw.BBox) -> None:
-        """Helper to place and resize an image into a page bbox.
-
-        Args:
-            image: path to the image file.
-            bbox: lib.print.draw.BBox describing the target area.
-        """
-        img_w = bbox.width
-        img_h = bbox.height
-
-        img = _libdraw.Image(str(image))
-
-        img.resize((img_w, img_h))
-        draw = _libdraw.Draw(self.page)
-        draw.paste(img, (bbox.x, bbox.y))
-
-
-class FrontPageLayout(WallCalPage):
+class FrontPageLayout(FrontPageLayoutBase, WallCalPage):
     """Layout for the calendar front (cover) page."""
     PADDING = (0, 0, 0, 0)
     TOP_BAR = 0.0
@@ -114,20 +59,10 @@ class FrontPageLayout(WallCalPage):
     TITLE_WIDTH = WallCalPage.WIDTH
     TITLE_HEIGHT = 1.5
 
-    def topbar_bbox(self) -> _libdraw.BBox:
-        """Return the top bar bounding box for the front page."""
-        return _libdraw.BBox.new(0, self.top_padding, self.WIDTH, self.TOP_BAR)
-
-    def image_bbox(self) -> _libdraw.BBox:
-        """Return the image bounding box where the cover image should be drawn."""
-        return _libdraw.BBox.new(0, self.top_padding + self.TOP_BAR, self.IMAGE_WIDTH, self.IMAGE_HEIGHT)
-
-    def title_bbox(self) -> _libdraw.BBox:
-        """Return the bounding box for the cover title text."""
-        return _libdraw.BBox.new(0, self.top_padding + self.TOP_BAR + self.IMAGE_HEIGHT, self.TITLE_WIDTH, self.TITLE_HEIGHT)
+    # Methods inherited from FrontPageLayoutBase
 
 
-class ArtPageLayout(WallCalPage):
+class ArtPageLayout(ArtPageLayoutBase, WallCalPage):
     """Layout used for full-page artwork pages in the wall calendar."""
     PADDING = (0, 0, 0, 0)
 
@@ -142,16 +77,10 @@ class ArtPageLayout(WallCalPage):
     INFO_WIDTH = IMAGE_WIDTH
     INFO_HEIGHT = IMG_BOT_BORDER
 
-    def image_bbox(self) -> _libdraw.BBox:
-        """Return bounding box for artwork image placement."""
-        return _libdraw.BBox.new(self.IMG_LEFT_BORDER, self.IMG_TOP_BORDER, self.IMAGE_WIDTH, self.IMAGE_HEIGHT)
-
-    def info_bbox(self) -> _libdraw.BBox:
-        """Return bounding box for the artwork description area."""
-        return _libdraw.BBox.new(self.IMG_LEFT_BORDER, self.HEIGHT - self.PADDING[3] - self.INFO_HEIGHT, self.INFO_WIDTH, self.INFO_HEIGHT)
+    # Methods inherited from ArtPageLayoutBase
 
 
-class CalendarPageLayout(WallCalPage):
+class CalendarPageLayout(CalendarPageLayoutBase, WallCalPage):
     """Layout used to draw a month calendar grid on a page."""
     PADDING = (0, WallCalPage.BIND_PADDING+.4, 0, 0)
 
@@ -170,27 +99,7 @@ class CalendarPageLayout(WallCalPage):
     TITLE_HEIGHT = .7
 
 
-    def title_bbox(self) -> _libdraw.BBox:
-        """Return bounding box for the calendar title area."""
-        return _libdraw.BBox.new(self.CAL_BORDER, self.top_padding, self.CALL_WIDTH, self.TITLE_HEIGHT)
-    
-    def header_bbox(self, index:int) -> _libdraw.BBox:
-        """Return bounding box for a day-of-week header cell at column index."""
-        x_pos = self.CAL_BORDER + (self.HEADER_WIDTH*index)        
-        y_pos = self.top_padding + self.TITLE_HEIGHT
-        return _libdraw.BBox.new(x_pos, y_pos, self.HEADER_WIDTH, self.HEADER_HEIGHT)
-
-    def cel_bbox(self, x:int, y:int) -> _libdraw.BBox:
-        """Return bounding box for a calendar day cell at column x and row y."""
-        x_pos = self.CAL_BORDER + (self.CELL_WIDTH * x)
-        y_pos = self.top_padding + self.TITLE_HEIGHT + self.HEADER_HEIGHT + (self.CELL_HEIGHT * y)
-        return _libdraw.BBox.new(x_pos, y_pos, self.CELL_WIDTH, self.CELL_HEIGHT)
-
-    def cal_bbox(self) -> _libdraw.BBox:
-        """Return the overall calendar bounding box covering the grid area."""
-        begin = self.cel_bbox(0,0)
-        end = self.cel_bbox(6, 5)
-        return _libdraw.BBox(begin.left, begin.top, end.right, end.bottom)
+    # Methods inherited from CalendarPageLayoutBase
 
 @ImageDrawer.override(_libcal.FrontPage)
 def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image.Image:
@@ -231,86 +140,7 @@ def DrawCalendarArt(self: _libcal.CalendarArt) -> PIL.Image.Image:
 
     return page.page.image
 
-class MoonPhaseImages:
-    """Helper class to load moon phase images for calendar rendering."""
-    BASE_DIR: str = os.path.dirname(os.path.realpath(__file__))
-    MOON_PHASES: str = os.path.join(BASE_DIR, 'moon-phases')
-    NEW_MOON_PATH = os.path.join(MOON_PHASES,"new-moon.png")
-    FIRST_QUARTER_PATH = os.path.join(MOON_PHASES,"first-quarter.png")
-    FULL_MOON_PATH = os.path.join(MOON_PHASES,"full-moon.png")
-    THIRD_QUARTER_PATH = os.path.join(MOON_PHASES,"third-quarter.png")
-
-    @staticmethod
-    def image(phase) -> _libdraw.Image:
-        """Return the image corresponding to a moon phase."""
-        moon_path = None
-        if phase == _MoonCalendar.NEW_MOON:
-            moon_path = MoonPhaseImages.NEW_MOON_PATH
-        elif phase == _MoonCalendar.FIRST_QUARTER:
-            moon_path = MoonPhaseImages.FIRST_QUARTER_PATH
-        elif phase == _MoonCalendar.FULL_MOON:
-            moon_path = MoonPhaseImages.FULL_MOON_PATH
-        elif phase == _MoonCalendar.THIRD_QUARTER:
-            moon_path = MoonPhaseImages.THIRD_QUARTER_PATH
-        if moon_path:
-            return _libdraw.Image(moon_path)
-        return moon_path
-    
-def DrawCell(page : CalendarPageLayout, day: _libcal.Day, pos : _libdraw.BBox) -> None:
-    """Render a single calendar day cell."""
-    padding = .05
-    img_size = pos.shrink(.01)
-    draw = _libdraw.Draw(page.page)
-
-    # draw.rectangle(img_size, outline='green', width='1pt')
-    has_photo = False
-    if day.photo:
-        photo = _libdraw.Image(day.photo)
-        photo.resize((img_size.width, img_size.height))
-        draw.paste(photo, (img_size.x, img_size.y))
-        has_photo = True
-    if day.day:
-        day_pos = _libdraw.BBox.new(padding, padding, .2, .2).move(img_size.x, img_size.y)
-        font = _libdraw.Font(_libdraw.fonts.Roboto, 14)
-        draw.text(f"{day.day}", day_pos, font, fill='black')
-    
-    
-    if day.moon_phase:
-        moon = MoonPhaseImages.image(day.moon_phase.phase)
-        if moon:
-            moon_size = .2
-            moon_pos = _libdraw.BBox.new(img_size.width - moon_size - padding, padding, moon_size, moon_size).move(img_size.x, img_size.y)
-            moon.resize((moon_pos.width, moon_pos.height))
-            draw.paste(moon, (moon_pos.x, moon_pos.y), moon)
-
-
-    # day._text = "Hello\nWorld"
-    if has_photo:
-        if day.text:
-            font = _libdraw.Font(_libdraw.fonts.Roboto, 10)
-
-            mtext = draw.get_multiline_text(day.text, pos.width, font)
-            # mtext = 
-            x_pos = pos.center[0]
-            y_pos = pos.bottom 
-
-            bbox = draw.textbbox(mtext, (x_pos, y_pos), font, anchor='md', align='center')
-            offset = abs(y_pos-bbox.bottom) + .01
-            background = (pos.left, bbox.top-offset, pos.right, pos.bottom)
-            draw.rectangle(background, fill=(0,0,0,100))
-
-            draw.text(mtext, (x_pos, y_pos), font, fill='white', anchor='md', align='center')
-    else:
-        if day.text:
-            font = _libdraw.Font(_libdraw.fonts.Roboto, 10)
-
-            mtext = draw.get_multiline_text(day.text, pos.width, font)
-
-            x_pos = pos.center[0]
-            y_pos = pos.bottom - .1
-
-
-            draw.text(mtext, (x_pos, y_pos), font, fill='black', anchor='md', align='center')
+DrawCell = _DrawCell
 
 
 @ImageDrawer.override(_libcal.Month)
@@ -346,35 +176,29 @@ def DrawMonth(self: _libcal.Month) -> PIL.Image.Image:
 def DrawCalendar(self: _libcal.Calendar):
     """Render a lib.pycal.Calendar into a sequence of PIL Images."""
     # ImageDrawer.draw(self.art)
-    img = ImageDrawer.draw(self.front_page)
-    yield img
+    yield from ImageDrawer.draw(self.front_page)
     for page in self.pages:
-        yield ImageDrawer.draw(page.art)
-        # yield ImageDrawer.draw(page.month)
-        # calpage = DeskCalendarPage(img)
-        # calpage.set_calendar(cal)
-    #     images.append(img) 
-    #     images.append(cal)
-    # return images
+        yield from ImageDrawer.draw(page.art)
+        yield from ImageDrawer.draw(page.month)
 
 if __name__ == "__main__":
     fm = FilesManager("resources")
     test_image = "images/PXL_COVER.jpg"
 
     front_page = _libcal.FrontPage(test_image, "Calendar\n2025")
-    img = ImageDrawer.draw(front_page)
+    img = next(ImageDrawer.draw(front_page))
     # img.show()
 
     art = _libcal.CalendarArt(test_image, "Some Where in a places\nAustin, TX. Mar 20")
-    img = ImageDrawer.draw(art)
+    img = next(ImageDrawer.draw(art))
     # img.show()
 
     month = _libcal.Month(2025, 5)
-    img = ImageDrawer.draw(month)
+    img = next(ImageDrawer.draw(month))
     # img.show()
 
     cal = _libcal.Calendar(2025, _libcal.EventsManager(2025))
-    imgs: List[PIL.Image.Image] = ImageDrawer.draw(cal)
+    imgs = ImageDrawer.draw(cal)
     for i, img in enumerate(imgs):
         fout = fm.get_file_path(f"out/wall_page_{i}.png")
         img.save(str(fout))

@@ -24,7 +24,7 @@ from lib.gui.util import MainFrame
 from lib.export import (
     ExporterRegistry,
     ExportFormat,
-    CalendarType,
+    DataType,
     ExportContext,
     BaseExporter
 )
@@ -65,7 +65,7 @@ class ExporterPanel(wx.Panel):
         self._calendar_type_ctrl = wx.ComboBox(
             self, 
             value="wall",
-            choices=["wall", "desk"],
+            choices=["wall", "desk", "photos", "birthdays"],
             style=wx.CB_READONLY
         )
         self._calendar_type_ctrl.Bind(wx.EVT_COMBOBOX, self.on_calendar_type_changed)
@@ -78,7 +78,7 @@ class ExporterPanel(wx.Panel):
         self._format_ctrl = wx.ComboBox(
             self,
             value="png",
-            choices=["png", "html", "pdf"],
+            choices=["png", "html", "pdf", "json"],
             style=wx.CB_READONLY
         )
         self._format_ctrl.Bind(wx.EVT_COMBOBOX, self.on_format_changed)
@@ -117,9 +117,19 @@ class ExporterPanel(wx.Panel):
         self._main_sizer.Add(self._options_panel, 1, wx.ALL | wx.EXPAND, 10)
         self._main_sizer.Add(self._export_button, 0, wx.ALL | wx.EXPAND, 10)
         
-        # Initialize with current selection
+        # Initialize with saved selection
+        exp_sel = Settings.get_export_selection()
+        if exp_sel.get("calendar_type") in ("wall", "desk"):
+            self._calendar_type_ctrl.SetValue(exp_sel["calendar_type"])
+        if exp_sel.get("format") in ("png", "html", "pdf"):
+            self._format_ctrl.SetValue(exp_sel["format"])
         self.update_exporter_list()
-        self.update_options_ui()
+        # Try to select saved exporter name if available
+        saved_name = exp_sel.get("exporter_name", "default")
+        names = [self._exporter_ctrl.GetString(i) for i in range(self._exporter_ctrl.GetCount())]
+        if saved_name in names:
+            self._exporter_ctrl.SetValue(saved_name)
+        self.update_options_ui(apply_saved=True)
 
     def get_main_frame(self) -> 'MainFrame':
         """Locate and return the parent MainFrame instance or None."""
@@ -128,10 +138,16 @@ class ExporterPanel(wx.Panel):
             parent = parent.GetParent()
         return parent
     
-    def get_selected_calendar_type(self) -> CalendarType:
-        """Get the currently selected calendar type."""
+    def get_selected_calendar_type(self) -> DataType:
+        """Get the currently selected data type."""
         value = self._calendar_type_ctrl.GetValue()
-        return CalendarType.WALL if value == "wall" else CalendarType.DESK
+        if value == "wall":
+            return DataType.WALL
+        if value == "desk":
+            return DataType.DESK
+        if value == "photos":
+            return DataType.PHOTOS
+        return DataType.BIRTHDAYS
     
     def get_selected_format(self) -> ExportFormat:
         """Get the currently selected export format."""
@@ -150,16 +166,31 @@ class ExporterPanel(wx.Panel):
     def on_calendar_type_changed(self, event: wx.Event):
         """Handler when calendar type selection changes."""
         self.update_exporter_list()
-        self.update_options_ui()
+        self.update_options_ui(apply_saved=True)
+        # Persist selection
+        Settings.set_export_selection(self._calendar_type_ctrl.GetValue(), self._format_ctrl.GetValue(), self.get_selected_exporter_name())
+        mf = self.get_main_frame()
+        if mf:
+            mf.on_content_changed()
     
     def on_format_changed(self, event: wx.Event):
         """Handler when format selection changes."""
         self.update_exporter_list()
-        self.update_options_ui()
+        self.update_options_ui(apply_saved=True)
+        # Persist selection
+        Settings.set_export_selection(self._calendar_type_ctrl.GetValue(), self._format_ctrl.GetValue(), self.get_selected_exporter_name())
+        mf = self.get_main_frame()
+        if mf:
+            mf.on_content_changed()
     
     def on_exporter_changed(self, event: wx.Event):
         """Handler when exporter variant selection changes."""
-        self.update_options_ui()
+        self.update_options_ui(apply_saved=True)
+        # Persist selection
+        Settings.set_export_selection(self._calendar_type_ctrl.GetValue(), self._format_ctrl.GetValue(), self.get_selected_exporter_name())
+        mf = self.get_main_frame()
+        if mf:
+            mf.on_content_changed()
     
     def update_exporter_list(self):
         """Update the exporter variant choices based on current format and calendar type."""
@@ -173,13 +204,18 @@ class ExporterPanel(wx.Panel):
             names = [exp['name'] for exp in exporters]
             self._exporter_ctrl.Clear()
             self._exporter_ctrl.AppendItems(names)
-            self._exporter_ctrl.SetValue(names[0])
+            # Prefer saved exporter if available
+            saved = Settings.get_export_selection().get("exporter_name", names[0])
+            self._exporter_ctrl.SetValue(saved if saved in names else names[0])
         else:
             self._exporter_ctrl.Clear()
             self._exporter_ctrl.SetValue("(none available)")
     
-    def update_options_ui(self):
-        """Dynamically generate option controls based on the selected exporter's OPTIONS_SCHEMA."""
+    def update_options_ui(self, apply_saved: bool = False):
+        """Dynamically generate option controls based on the selected exporter's OPTIONS_SCHEMA.
+
+        If apply_saved=True, populate controls with saved option values from Settings.
+        """
         # Clear existing options
         self._options_sizer.Clear(True)
         self._option_controls.clear()
@@ -207,6 +243,24 @@ class ExporterPanel(wx.Panel):
             else:
                 for option_name, option_spec in schema.items():
                     self._add_option_control(option_name, option_spec)
+                if apply_saved:
+                    saved_opts = Settings.get_export_options(exporter_name)
+                    for name, control in self._option_controls.items():
+                        if name in saved_opts:
+                            val = saved_opts[name]
+                            spec = schema.get(name, {})
+                            option_type = spec.get('type', 'string')
+                            if option_type in ('integer', 'int'):
+                                try:
+                                    control.SetValue(int(val))
+                                except Exception:
+                                    pass
+                            elif option_type in ('boolean', 'bool'):
+                                control.SetValue(bool(val))
+                            elif option_type in ('enum', 'choices'):
+                                control.SetValue(str(val))
+                            else:
+                                control.SetValue(str(val))
             
             # Refresh layout
             self._options_panel.Layout()
@@ -302,32 +356,50 @@ class ExporterPanel(wx.Panel):
             return
         
         # Get calendar based on type
-        calendar_type = self.get_selected_calendar_type()
-        if calendar_type == CalendarType.WALL:
-            calendar = main_frame.get_wall_calendar()
-        else:
-            calendar = main_frame.get_desk_calendar()
+        data_type = self.get_selected_calendar_type()
+        if data_type == DataType.WALL:
+            source = main_frame.get_wall_calendar()
+        elif data_type == DataType.DESK:
+            source = main_frame.get_desk_calendar()
+        elif data_type == DataType.PHOTOS:
+            photos_view = getattr(main_frame, '_photo_labels_view', None)
+            source = photos_view.to_json().get('photos', []) if photos_view else []
+        else:  # birthdays
+            bday_view = getattr(main_frame, '_birthday_view', None)
+            source = bday_view.to_json().get('birthdays', []) if bday_view else []
         
         # Get selected exporter
         format = self.get_selected_format()
         exporter_name = self.get_selected_exporter_name()
         
         try:
-            exporter = ExporterRegistry.get_exporter(format, calendar_type, exporter_name)
+            exporter = ExporterRegistry.get_exporter(format, data_type, exporter_name)
         except KeyError as e:
             wx.MessageBox(str(e), "Exporter Not Found", wx.OK | wx.ICON_ERROR)
             return
         
-        # Get options from UI
+        # Get options from UI and persist them
         options = self.get_options_from_ui()
+        # No need to inject source data into options; context.source carries it.
+        Settings.set_export_selection(self._calendar_type_ctrl.GetValue(), self._format_ctrl.GetValue(), exporter_name)
+        Settings.set_export_options(exporter_name, options)
+        # Mark changes in editor
+        main_frame.on_content_changed()
         
         # Setup output directory
-        output_base = f"{calendar_type.value.title()}Cal"
+        # Use distinct output base directories
+        if data_type in (DataType.WALL, DataType.DESK):
+            output_base = f"{data_type.value.title()}Cal"
+        elif data_type == DataType.PHOTOS:
+            output_base = "Photos"
+        else:
+            output_base = "Birthdays"
         output_dir = FilesManager.instance().get_file_path(output_base)
         
         # Create progress dialog
+        label_title = data_type.value.title()
         progress_dialog = wx.ProgressDialog(
-            f"Exporting {calendar_type.value.title()} Calendar",
+            f"Exporting {label_title}",
             "Please wait...",
             maximum=100,
             style=wx.PD_SMOOTH | wx.PD_AUTO_HIDE | wx.PD_CAN_ABORT
@@ -340,8 +412,8 @@ class ExporterPanel(wx.Panel):
         
         # Create export context
         context = ExportContext(
-            calendar=calendar,
-            calendar_type=calendar_type,
+            source=source,
+            data_type=data_type,
             format=format,
             output_dir=Path(output_dir),
             project_root=FilesManager.instance().root,
@@ -376,4 +448,24 @@ class ExporterPanel(wx.Panel):
                 "Export Error",
                 wx.OK | wx.ICON_ERROR
             )
+
+    def apply_saved_settings(self):
+        """Apply saved export settings to controls and options UI."""
+        # Year
+        self._year_ctrl.SetValue(str(Settings.year))
+        # Export selection
+        exp_sel = Settings.get_export_selection()
+        cal_type = exp_sel.get("calendar_type")
+        fmt = exp_sel.get("format")
+        if cal_type in ("wall", "desk"):
+            self._calendar_type_ctrl.SetValue(cal_type)
+        if fmt in ("png", "html", "pdf"):
+            self._format_ctrl.SetValue(fmt)
+        # Rebuild exporter list and options
+        self.update_exporter_list()
+        saved_name = exp_sel.get("exporter_name", "default")
+        names = [self._exporter_ctrl.GetString(i) for i in range(self._exporter_ctrl.GetCount())]
+        if saved_name in names:
+            self._exporter_ctrl.SetValue(saved_name)
+        self.update_options_ui(apply_saved=True)
 

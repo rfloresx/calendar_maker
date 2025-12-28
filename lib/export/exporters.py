@@ -1,10 +1,10 @@
 """Core export API and base classes.
 
-This module defines the foundational classes for the calendar export system:
+This module defines the foundational classes for the export system:
 - BaseExporter: Abstract base class that all exporters must implement
 - ExporterRegistry: Central registry for managing and instantiating exporters
 - ExportFormat: Enumeration of supported export formats
-- CalendarType: Enumeration for calendar types (wall, desk)
+- DataType: Enumeration for export data types (wall calendar, desk calendar, photos, birthdays)
 - ExportContext: Data class containing all export parameters
 - ExportResult: Data class containing export operation results
 
@@ -46,15 +46,19 @@ class ExportFormat(Enum):
         return self.value
 
 
-class CalendarType(Enum):
-    """Enumeration of calendar layout types.
-    
-    Different calendar types may have different page layouts, sizes,
-    and rendering requirements.
+class DataType(Enum):
+    """Enumeration of export data types.
+
+    - WALL: Wall calendar (large format, monthly pages)
+    - DESK: Desk calendar (compact format, tent-fold style)
+    - PHOTOS: Photo labels data
+    - BIRTHDAYS: Birthdays data
     """
-    WALL = "wall"         # Wall calendar (large format, monthly pages)
-    DESK = "desk"         # Desk calendar (compact format, tent-fold style)
-    
+    WALL = "wall"
+    DESK = "desk"
+    PHOTOS = "photos"
+    BIRTHDAYS = "birthdays"
+
     def __str__(self) -> str:
         return self.value
 
@@ -68,16 +72,16 @@ class ExportContext:
     preferences. This allows exporters to be stateless and testable.
     
     Attributes:
-        calendar: The Calendar object to export
-        calendar_type: Type of calendar (wall or desk)
+        source: The source object to export (e.g., Calendar for wall/desk, list for photos/birthdays)
+        data_type: The DataType describing the source
         format: Desired export format
         output_dir: Directory where exported files should be saved
         project_root: Optional project root for relative path resolution
         options: Additional format-specific options (e.g., generate_expanded, embed_images)
         progress_callback: Optional callback for progress updates
     """
-    calendar: libcal.Calendar
-    calendar_type: CalendarType
+    source: Any
+    data_type: DataType
     format: ExportFormat
     output_dir: Path
     project_root: Optional[Path] = None
@@ -99,8 +103,11 @@ class ExportContext:
     
     @property
     def year(self) -> int:
-        """Return the year from the calendar."""
-        return self.calendar.year
+        """Return the year from the calendar when available, else current year."""
+        try:
+            return getattr(self.source, 'year')
+        except Exception:
+            return datetime.datetime.now().year
     
     def report_progress(self, current: int, total: int, message: str = ""):
         """Report progress if a callback is registered.
@@ -133,7 +140,7 @@ class ExportResult:
     success: bool
     files: List[Path]
     format: ExportFormat
-    calendar_type: CalendarType
+    data_type: DataType
     errors: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     duration: Optional[float] = None
@@ -162,13 +169,13 @@ class BaseExporter(ABC):
     
     Class attributes:
         FORMAT: The ExportFormat this exporter handles
-        CALENDAR_TYPE: The CalendarType this exporter handles
-        NAME: Unique identifier for this exporter (e.g., "standard", "compact", "v2")
+        DATA_TYPE: The DataType this exporter handles
+        NAME: Unique identifier for this exporter variant (e.g., "standard", "compact", "v2")
         DESCRIPTION: Human-readable description of this exporter
     """
     
     FORMAT: ExportFormat = None
-    CALENDAR_TYPE: CalendarType = None
+    DATA_TYPE: DataType = None
     NAME: str = "default"  # Unique name for this exporter variant
     DESCRIPTION: str = ""
     OPTIONS_SCHEMA: Dict[str, Any] = {}  # Optional schema for context options validation
@@ -212,14 +219,14 @@ class BaseExporter(ABC):
                 f"got {context.format}"
             )
         
-        if context.calendar_type != self.CALENDAR_TYPE:
+        if context.data_type != self.DATA_TYPE:
             raise ValueError(
-                f"{self.__class__.__name__} expects calendar type {self.CALENDAR_TYPE}, "
-                f"got {context.calendar_type}"
+                f"{self.__class__.__name__} expects data type {self.DATA_TYPE}, "
+                f"got {context.data_type}"
             )
         
-        if not context.calendar:
-            raise ValueError("ExportContext must have a calendar")
+        if context.source is None:
+            raise ValueError("ExportContext must have a source")
         
         return True
     
@@ -228,11 +235,11 @@ class BaseExporter(ABC):
         """Get information about this exporter.
         
         Returns:
-            Dictionary with format, calendar_type, name, and description
+            Dictionary with format, data_type, name, and description
         """
         return {
             'format': str(cls.FORMAT) if cls.FORMAT else 'unknown',
-            'calendar_type': str(cls.CALENDAR_TYPE) if cls.CALENDAR_TYPE else 'unknown',
+            'data_type': str(cls.DATA_TYPE) if cls.DATA_TYPE else 'unknown',
             'name': cls.NAME,
             'description': cls.DESCRIPTION,
             'class': cls.__name__,
@@ -242,8 +249,8 @@ class ExporterRegistry:
     """Central registry for managing calendar exporters.
     
     The ExporterRegistry provides a factory pattern for creating exporters
-    and maintains a mapping of (format, calendar_type, name) -> exporter class.
-    Multiple exporters can be registered for the same format+calendar_type by
+    and maintains a mapping of (format, data_type, name) -> exporter class.
+    Multiple exporters can be registered for the same format+data_type by
     using different names.
     
     Usage:
@@ -261,7 +268,7 @@ class ExporterRegistry:
         exporters = ExporterRegistry.list_exporters()
     """
     
-    _registry: Dict[tuple, Type[BaseExporter]] = {}  # (format, calendar_type, name) -> class
+    _registry: Dict[tuple, Type[BaseExporter]] = {}  # (format, data_type, name) -> class
     
     @classmethod
     def register(cls, exporter_class: Type[BaseExporter]) -> None:
@@ -284,9 +291,9 @@ class ExporterRegistry:
                 f"{exporter_class.__name__} must define FORMAT class attribute"
             )
         
-        if exporter_class.CALENDAR_TYPE is None:
+        if getattr(exporter_class, 'DATA_TYPE', None) is None:
             raise ValueError(
-                f"{exporter_class.__name__} must define CALENDAR_TYPE class attribute"
+                f"{exporter_class.__name__} must define DATA_TYPE class attribute"
             )
         
         if not exporter_class.NAME:
@@ -294,7 +301,7 @@ class ExporterRegistry:
                 f"{exporter_class.__name__} must define NAME class attribute"
             )
         
-        key = (exporter_class.FORMAT, exporter_class.CALENDAR_TYPE, exporter_class.NAME)
+        key = (exporter_class.FORMAT, exporter_class.DATA_TYPE, exporter_class.NAME)
         
         if key in cls._registry:
             existing = cls._registry[key]
@@ -309,14 +316,14 @@ class ExporterRegistry:
     def get_exporter(
         cls,
         format: ExportFormat,
-        calendar_type: CalendarType,
+        data_type: DataType,
         name: str = "default"
     ) -> BaseExporter:
         """Get an exporter instance for the specified format, calendar type, and name.
         
         Args:
             format: Desired export format
-            calendar_type: Type of calendar to export
+            data_type: Type of data to export
             name: Name of the specific exporter variant (default: "default")
             
         Returns:
@@ -325,20 +332,20 @@ class ExporterRegistry:
         Raises:
             KeyError: If no exporter is registered for the given combination
         """
-        key = (format, calendar_type, name)
+        key = (format, data_type, name)
         
         if key not in cls._registry:
             # Try to provide helpful error message
-            available = cls.get_exporters_for(format, calendar_type)
+            available = cls.get_exporters_for(format, data_type)
             if available:
                 available_names = [exp['name'] for exp in available]
                 raise KeyError(
-                    f"No exporter registered for {format} + {calendar_type} + '{name}'. "
+                    f"No exporter registered for {format} + {data_type} + '{name}'. "
                     f"Available names: {available_names}"
                 )
             else:
                 raise KeyError(
-                    f"No exporter registered for {format} + {calendar_type}. "
+                    f"No exporter registered for {format} + {data_type}. "
                     f"Available: {cls.list_exporters()}"
                 )
         
@@ -349,7 +356,7 @@ class ExporterRegistry:
     def has_exporter(
         cls,
         format: ExportFormat,
-        calendar_type: CalendarType,
+        data_type: DataType,
         name: str = "default"
     ) -> bool:
         """Check if an exporter exists for the given format, calendar type, and name.
@@ -362,7 +369,7 @@ class ExporterRegistry:
         Returns:
             True if an exporter is registered
         """
-        return (format, calendar_type, name) in cls._registry
+        return (format, data_type, name) in cls._registry
     
     @classmethod
     def list_exporters(cls) -> List[Dict[str, str]]:
@@ -380,7 +387,7 @@ class ExporterRegistry:
     def get_exporters_for(
         cls,
         format: ExportFormat = None,
-        calendar_type: CalendarType = None
+        data_type: DataType = None
     ) -> List[Dict[str, str]]:
         """Get all exporters registered for a specific format and calendar type.
         
@@ -394,41 +401,41 @@ class ExporterRegistry:
         matching = [
             exporter_class.get_info()
             for (fmt, cal_type, name), exporter_class in cls._registry.items()
-            if (format is None or fmt == format) and (calendar_type is None or cal_type == calendar_type)
+            if (format is None or fmt == format) and (data_type is None or cal_type == data_type)
         ]
         return sorted(matching, key=lambda e: e['name'])
     
     @classmethod
-    def get_formats_for_calendar_type(cls, calendar_type: CalendarType) -> List[ExportFormat]:
+    def get_formats_for_data_type(cls, data_type: DataType) -> List[ExportFormat]:
         """Get all available export formats for a given calendar type.
         
         Args:
-            calendar_type: Calendar type to query
+            data_type: Data type to query
             
         Returns:
             List of ExportFormats available for this calendar type (unique)
         """
         formats = set(
             fmt for fmt, cal_type, name in cls._registry.keys()
-            if cal_type == calendar_type
+            if cal_type == data_type
         )
         return sorted(formats, key=lambda f: f.value)
     
     @classmethod
-    def get_calendar_types_for_format(cls, format: ExportFormat) -> List[CalendarType]:
+    def get_data_types_for_format(cls, format: ExportFormat) -> List[DataType]:
         """Get all available calendar types for a given export format.
         
         Args:
             format: Export format to query
             
         Returns:
-            List of CalendarTypes available for this format (unique)
+            List of DataTypes available for this format (unique)
         """
-        calendar_types = set(
+        data_types = set(
             cal_type for fmt, cal_type, name in cls._registry.keys()
             if fmt == format
         )
-        return sorted(calendar_types, key=lambda ct: ct.value)
+        return sorted(data_types, key=lambda ct: ct.value)
     
     @classmethod
     def clear(cls) -> None:
@@ -440,61 +447,26 @@ class ExporterRegistry:
 
 
 # Convenience function for quick exports
-def export_calendar(
-    calendar: libcal.Calendar,
+def export_data(
+    source: Any,
     format: ExportFormat,
-    calendar_type: CalendarType,
+    data_type: DataType,
     output_dir: str | Path,
     exporter_name: str = "default",
     **kwargs
 ) -> ExportResult:
-    """Convenience function to export a calendar in one call.
-    
-    This function creates an ExportContext, retrieves the appropriate
-    exporter, and performs the export operation.
-    
-    Args:
-        calendar: Calendar object to export
-        format: Desired export format
-        calendar_type: Type of calendar (wall or desk)
-        output_dir: Directory to save exported files
-        exporter_name: Name of specific exporter variant to use (default: "default")
-        **kwargs: Additional options passed to ExportContext
-        
-    Returns:
-        ExportResult with status and generated files
-        
-    Example:
-        ```python
-        # Use default exporter
-        result = export_calendar(
-            my_calendar,
-            ExportFormat.PNG,
-            CalendarType.WALL,
-            "/path/to/output"
-        )
-        
-        # Use specific named exporter
-        result = export_calendar(
-            my_calendar,
-            ExportFormat.PNG,
-            CalendarType.WALL,
-            "/path/to/output",
-            exporter_name="compact"
-        )
-        
-        if result.success:
-            print(f"Generated {result.file_count} files")
-        ```
+    """Convenience function to export data in one call.
+
+    Creates an ExportContext, retrieves the appropriate exporter, and performs the export.
     """
     context = ExportContext(
-        calendar=calendar,
-        calendar_type=calendar_type,
+        source=source,
+        data_type=data_type,
         format=format,
         output_dir=Path(output_dir),
         **kwargs
     )
-    
-    exporter = ExporterRegistry.get_exporter(format, calendar_type, exporter_name)
+
+    exporter = ExporterRegistry.get_exporter(format, data_type, exporter_name)
     return exporter.export(context)
 

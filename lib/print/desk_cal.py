@@ -277,11 +277,10 @@ def DrawCalendar(self: _libcal.Calendar):
     artwork background.
     """
     images = []
-    img = ImageDrawer.draw(self.front_page)
-    yield img
+    yield from ImageDrawer.draw(self.front_page)
     for page in self.pages:
-        img = ImageDrawer.draw(page.art)
-        cal = ImageDrawer.draw(page.month)
+        img = next(ImageDrawer.draw(page.art))
+        cal = next(ImageDrawer.draw(page.month))
         calpage = DeskCalendarPage(img)
         calpage.set_calendar(cal)
         yield calpage.page
@@ -383,7 +382,7 @@ if __name__ == "__main__":
     # img.show()
 
     cal = _libcal.Calendar(2025)
-    imgs: List[PIL.Image.Image] = ImageDrawer.draw(cal)
+    imgs = ImageDrawer.draw(cal)
     for i, img in enumerate(imgs):
         fout = fm.get_file_path(f"out/page_{i}.png")
         img.save(str(fout))

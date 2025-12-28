@@ -18,6 +18,7 @@ except:
 
 import lib.pycal as _libcal
 import lib.html.htmlutil as _libhtml
+import lib.html.common as _common
 from lib.calendar.moon_calendar import _MoonCalendar
 
 
@@ -31,22 +32,7 @@ class CssResources:
 
 @HtmlEncoder.override(_libcal.FrontPage)
 def FrontPageHtml(self: _libcal.FrontPage) -> ET.Element:
-    """
-    <div class="page-letter-landscape">
-        <div class="front-page">
-            <div class="front-page
-    """
-    page = _libhtml.HtmlTag('div', attrib={'class': 'page-letter-landscape'})
-    fp = page.add('div', attrib={'class': 'front-page'})
-    if self.image:
-        fp.add('img', attrib={
-            'class': 'front-page-img', 'src': self.image})
-
-    if self.title:
-        title = fp.add('div', attrib={'class': 'front-page-title'})
-        title.add('p', text=self.title)
-    page.add("div", attrib={'class': 'page-break'})
-    return page
+    return _common.front_page_element(self)
 
 
 @HtmlEncoder.override(_libcal.CalendarArt)
@@ -68,29 +54,7 @@ def CalendarArtHtml(self: _libcal.CalendarArt) -> ET.Element:
     return page
 
 
-class MoonPhaseImages:
-    """Provide file paths for small moon-phase overlay images.
-
-    The image() helper returns a relative path for the given moon phase
-    constant defined by lib.calendar.moon_calendar._MoonCalendar.
-    """
-    NEW_MOON_PATH = "images/moon-phases/new-moon.png"
-    FIRST_QUARTER_PATH = "images/moon-phases/first-quarter.png"
-    FULL_MOON_PATH = "images/moon-phases/full-moon.png"
-    THIRD_QUARTER_PATH = "images/moon-phases/third-quarter.png"
-
-    @staticmethod
-    def image(phase) -> None:
-        moon_path = None
-        if phase == _MoonCalendar.NEW_MOON:
-            moon_path = MoonPhaseImages.NEW_MOON_PATH
-        elif phase == _MoonCalendar.FIRST_QUARTER:
-            moon_path = MoonPhaseImages.FIRST_QUARTER_PATH
-        elif phase == _MoonCalendar.FULL_MOON:
-            moon_path = MoonPhaseImages.FULL_MOON_PATH
-        elif phase == _MoonCalendar.THIRD_QUARTER:
-            moon_path = MoonPhaseImages.THIRD_QUARTER_PATH
-        return moon_path
+# Use shared moon-phase images helper from common
 
 
 @HtmlEncoder.override(_libcal.MoonPhase)
@@ -101,10 +65,7 @@ def MoonPhaseHtml(self: _libcal.MoonPhase) -> ET.Element:
     that positions the moon overlay inside a calendar cell, or None when
     no image is defined for the phase.
     """
-    img = MoonPhaseImages.image(self.phase)
-    if img:
-        return _libhtml.HtmlTag('img', attrib={'class': 'cell-moon-overlay', 'src': img})
-    return None
+    return _common.moon_phase_element(self.phase)
 
 
 @HtmlEncoder.override(_libcal.Day)

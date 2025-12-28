@@ -18,6 +18,7 @@ from typing import List, Tuple
 from lib.filemanager import FilesManager
 from lib.gui.util import ImageButton, Text, ScrolledPanel
 from lib.gui.settings import Settings
+from lib.gui.panel_mixins import ArtworkPanelOpsMixin, ScrolledPanelItemsMixin
 
 import datetime
 
@@ -177,73 +178,19 @@ class ArtWorkInfoPanel(wx.Panel):
         return self._process_description_template(self._description_ctrl.GetValue())
 
     def _process_description_template(self, template: str) -> str:
-        """Process template string with variable replacements.
-
-        Supported replacements:
-            {year} - Current calendar year from Settings
-            {date:format} - Image date with custom strftime format (e.g., {date:%b %d})
-            {place.name} - Name of the selected place in image metadata
-            {place.city} - City of the selected place
-            {place.state} - State of the selected place
-            {place.country} - Country of the selected place
-            {place.address} - Full address of the selected place
-            {place.rating} - Rating of the selected place
-        """
+        """Process template using TextTemplate with context builder."""
+        from lib.gui.util import TextTemplate, build_text_context
         if not template:
             return template
-
-        result = template
         image_info = self._image_ctrl.image_info
-
-        # Replace {year}
-        result = result.replace("{year}", str(Settings().year))
-
-        # Replace {date:format} with strftime format
-        if image_info.datetime_original is not None:
-            # Find all {date:...} patterns
-            date_pattern = r'\{date:([^}]+)\}'
-            for match in re.finditer(date_pattern, result):
-                format_str = match.group(1)
-                formatted_date = image_info.datetime_original.strftime(
-                    format_str)
-                result = result.replace(match.group(0), formatted_date)
-
-        # Replace {place.*} properties using getattr with override support
-        # Check for overrides first (even if no metadata places exist)
-        place_pattern = r'\{place\.(\w+)\}'
-
-        if self._selected_place_index in self._place_overrides:
-            # Use manual overrides when available
-            for match in re.finditer(place_pattern, result):
-                property_name = match.group(1)
-                value = self._place_overrides[self._selected_place_index].get(
-                    property_name, "")
-                value = str(value) if value is not None else ""
-                result = result.replace(match.group(0), value)
-        elif image_info.places and len(image_info.places) > 0:
-            # Use metadata places if available and no overrides
-            place_idx = min(self._selected_place_index,
-                            len(image_info.places) - 1)
-            selected_place = image_info.places[place_idx]
-
-            for match in re.finditer(place_pattern, result):
-                property_name = match.group(1)
-                try:
-                    value = getattr(selected_place, property_name, "")
-                    # Handle NaN for numeric values like rating
-                    if isinstance(value, float) and value != value:  # NaN check
-                        value = ""
-                    else:
-                        value = str(value) if value is not None else ""
-                    result = result.replace(match.group(0), value)
-                except AttributeError:
-                    result = result.replace(match.group(0), "")
-        else:
-            # Clear all {place.*} placeholders when no place is available
-            place_pattern = r'\{place\.\w+\}'
-            result = re.sub(place_pattern, "", result)
-
-        return result
+        overrides = self._place_overrides.get(self._selected_place_index)
+        ctx = build_text_context(
+            image_info=image_info,
+            selected_place_index=self._selected_place_index,
+            overrides=overrides,
+            year=Settings().year,
+        )
+        return TextTemplate(template or "").render(ctx)
 
     def update_metadata(self):
         """Refresh the metadata text area from the image control."""
@@ -334,7 +281,7 @@ class ArtWorkInfoPanel(wx.Panel):
         self.update_metadata()
 
 
-class CalendarPagePanel(wx.Panel):
+class CalendarPagePanel(wx.Panel, ArtworkPanelOpsMixin):
     """Panel containing the list of month artwork entries for a wall calendar."""
 
     def __init__(self, *args, **kargs):
@@ -351,46 +298,11 @@ class CalendarPagePanel(wx.Panel):
         for i in range(1, 13):
             self.add_artwork(i, None, f"Month {i}", img_size=(300, 200))
 
-    def add_artwork(self, id, image: str, desc: str, img_size: Tuple[int, int]) -> None:
-        """Add a new ArtWorkInfoPanel to the scrolling list."""
-        if image is not None:
-            image = FilesManager.instance().add_file(image)
-        panel = ArtWorkInfoPanel(month=id,
-                                 image=image, img_size=img_size, description=desc, parent=self._scrolling_panel)
-        self._scrolling_panel.Add(panel)
-
-    def load(self, data: dict) -> None:
-        """Load pages from a previously saved dictionary."""
-        pages = data["pages"]
-        items = self._scrolling_panel.Items()
-
-        for i in range(len(pages)):
-            items[i].load(pages[i])
-
-    def to_json(self) -> dict:
-        """Serialize the panel state to a dictionary suitable for JSON."""
-        data = {}
-        data["pages"] = []
-        for page in self._scrolling_panel.Items():
-            data["pages"].append(page.to_json())
-        return data
-
-    def clear(self):
-        """Reset all pages to default empty state (no images, default descriptions)."""
-        pages: List[ArtWorkInfoPanel] = self._scrolling_panel.Items()
-        pages[0].set_description("Cover Page")
-        pages[0].set_image(None)
-        for i in range(1, len(pages)):
-            pages[i].set_description(f"Month {i}")
-            pages[i].set_image(None)
-
-    @property
-    def pages(self) -> List[ArtWorkInfoPanel]:
-        """Return the list of ArtWorkInfoPanel items in the panel."""
-        return self._scrolling_panel.Items()
+    def create_artwork_panel(self, id, image, img_size, desc):
+        return ArtWorkInfoPanel(month=id, image=image, img_size=img_size, description=desc, parent=self._scrolling_panel)
 
 
-class DeskCalendarPanel(wx.Panel):
+class DeskCalendarPanel(wx.Panel, ArtworkPanelOpsMixin):
     """Panel containing artwork entries optimized for the desk calendar layout."""
 
     def __init__(self, *args, **kargs):
@@ -406,40 +318,5 @@ class DeskCalendarPanel(wx.Panel):
         for i in range(1, 13):
             self.add_artwork(i, None, f"Month {i}", img_size=(300, 300))
 
-    def add_artwork(self, id, image: str, desc: str, img_size: Tuple[int, int]) -> None:
-        """Add a new ArtWorkInfoPanel to the scrolling list."""
-        if image is not None:
-            image = FilesManager.instance().add_file(image)
-        panel = ArtWorkInfoPanel(month=id,
-                                 image=image, img_size=img_size, description=desc, parent=self._scrolling_panel)
-        self._scrolling_panel.Add(panel)
-
-    def load(self, data: dict) -> None:
-        """Load pages from a previously saved dictionary."""
-        pages = data["pages"]
-        items = self._scrolling_panel.Items()
-
-        for i in range(len(pages)):
-            items[i].load(pages[i])
-
-    def to_json(self) -> dict:
-        """Serialize the panel state to a dictionary suitable for JSON."""
-        data = {}
-        data["pages"] = []
-        for page in self._scrolling_panel.Items():
-            data["pages"].append(page.to_json())
-        return data
-
-    def clear(self):
-        """Reset all pages to default empty state (no images, default descriptions)."""
-        pages: List[ArtWorkInfoPanel] = self._scrolling_panel.Items()
-        pages[0].set_description("Cover Page")
-        pages[0].set_image(None)
-        for i in range(1, len(pages)):
-            pages[i].set_description(f"Month {i}")
-            pages[i].set_image(None)
-
-    @property
-    def pages(self) -> List[ArtWorkInfoPanel]:
-        """Return the list of ArtWorkInfoPanel items in the panel."""
-        return self._scrolling_panel.Items()
+    def create_artwork_panel(self, id, image, img_size, desc):
+        return ArtWorkInfoPanel(month=id, image=image, img_size=img_size, description=desc, parent=self._scrolling_panel)

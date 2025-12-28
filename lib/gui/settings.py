@@ -37,6 +37,13 @@ class Settings(object):
     def __init__(self):
         self._settings = {}
         self._settings["year"] = datetime.datetime.now().year
+        # Default export settings structure
+        self._settings["export"] = {
+            "calendar_type": "wall",   # 'wall' or 'desk'
+            "format": "png",          # 'png', 'html', 'pdf', etc.
+            "exporter_name": "default",
+            "options": {}               # per-exporter options map: name -> dict
+        }
 
     @property
     def year(self) -> int:
@@ -58,7 +65,47 @@ class Settings(object):
     
     def load(self, obj):
         """Load settings from a dict (usually read from JSON)."""
-        self._settings = obj
+        self._settings = obj or {}
+        # Ensure defaults exist
+        if "year" not in self._settings:
+            self._settings["year"] = datetime.datetime.now().year
+        export = self._settings.get("export")
+        if not isinstance(export, dict):
+            export = {}
+        export.setdefault("calendar_type", "wall")
+        export.setdefault("format", "png")
+        export.setdefault("exporter_name", "default")
+        export.setdefault("options", {})
+        self._settings["export"] = export
+
+    # ---- Export settings helpers ----
+    def get_export_selection(self) -> dict:
+        """Return current export selection (calendar_type, format, exporter_name)."""
+        exp = self._settings.get("export", {})
+        return {
+            "calendar_type": exp.get("calendar_type", "wall"),
+            "format": exp.get("format", "png"),
+            "exporter_name": exp.get("exporter_name", "default")
+        }
+
+    def set_export_selection(self, calendar_type: str, format: str, exporter_name: str):
+        """Update current export selection values."""
+        exp = self._settings.setdefault("export", {})
+        exp["calendar_type"] = calendar_type
+        exp["format"] = format
+        exp["exporter_name"] = exporter_name
+
+    def get_export_options(self, exporter_name: str) -> dict:
+        """Return saved option values for the given exporter name."""
+        exp = self._settings.get("export", {})
+        options = exp.get("options", {})
+        return dict(options.get(exporter_name, {}))
+
+    def set_export_options(self, exporter_name: str, opts: dict):
+        """Persist option values for the given exporter name."""
+        exp = self._settings.setdefault("export", {})
+        options = exp.setdefault("options", {})
+        options[exporter_name] = dict(opts or {})
 
 Settings = Settings()
 

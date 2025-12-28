@@ -17,6 +17,7 @@ import PIL.ImageFont
 from typing import Iterable, List, Tuple, Union, Any
 import lib.print.fonts as fonts
 from lib.print.fonts import Fonts
+from lib.print.decoder_base import DecoderBase
 
 PRINT_DPI = 300
 
@@ -84,6 +85,14 @@ class _Resolution:
     def font_to_pt(self, font_size: int) -> int:
         """Convert font size in points to device pixels using current DPI."""
         return int((font_size/72)*self._dpi)
+
+    def font_in_to_font(self, inches: float) -> int:
+        """Convert a font height measured in inches to typographic points.
+
+        Uses the standard 1in = 72pt conversion. This returns a point size
+        that can be passed to font APIs expecting point units.
+        """
+        return int(round(inches * 72))
 
     def in_to_pt(self, inches: float) -> int:
         """Convert inches to printer points (pixels) using DPI."""
@@ -355,9 +364,9 @@ def _resize_cover(image: PIL.Image.Image, size: tuple) -> PIL.Image.Image:
 
 class Image:
     @staticmethod
-    def new(size: Tuple, color=(0, 0, 0, 0)) -> 'Image':
+    def new(size: Tuple, mode="RGB", color=(0, 0, 0, 0)) -> 'Image':
         size = Resolution.to_pt(size)
-        img = PIL.Image.new('RGB', size, color=color)
+        img = PIL.Image.new(mode, size, color=color)
         return Image(image=img)
 
     def __init__(self, image: str = None):
@@ -396,6 +405,13 @@ class Image:
         image.paste(self._image, box)
 
 
+def _has_alpha(color: Union[Tuple[Any, ...], List[Any], int, str, None]) -> bool:
+    try:
+        return isinstance(color, (tuple, list)) and len(color) >= 4 and color[3] is not None and int(color[3]) < 255
+    except Exception:
+        return False
+
+
 class Draw:
     def __init__(self, image: PIL.Image.Image):
         if isinstance(image, Image):
@@ -408,7 +424,108 @@ class Draw:
         bbox = Resolution.to_pt(bbox)
         width = Resolution.to_pt(width)
         bbox = (bbox[0], bbox[1], bbox[2], bbox[3])
+
+        # If semi-transparent fill or outline is provided, draw on an overlay and alpha-composite
+        if _has_alpha(fill) or _has_alpha(outline):
+            base = self._image
+            if base.mode != 'RGBA':
+                base = base.convert('RGBA')
+                # Update draw context to RGBA but keep the same image reference
+                self._image = base
+                self._draw = PIL.ImageDraw.Draw(self._image, mode='RGBA')
+
+            overlay = PIL.Image.new('RGBA', base.size, (0, 0, 0, 0))
+            ov_draw = PIL.ImageDraw.Draw(overlay, mode='RGBA')
+            ov_draw.rectangle(bbox, fill=fill, outline=outline, width=width)
+            # Blend overlay onto the base without replacing the image object
+            self._image.paste(overlay, (0, 0), overlay)
+            return
+
+        # Opaque colors: draw directly
         self._draw.rectangle(bbox, fill, outline, width)
+
+    def rounded_rectangle(self, bbox: Tuple, radius: int, fill=None, outline=None, width: int = 1) -> None:
+        """Draw a (possibly semi-transparent) rounded rectangle.
+
+        Supports alpha blending by using an overlay when `fill` or `outline`
+        include transparency (alpha < 255).
+        """
+        bbox_pt = Resolution.to_pt(bbox)
+        width_pt = Resolution.to_pt(width)
+        radius_pt = Resolution.to_pt(radius)
+        bbox_pt = (bbox_pt[0], bbox_pt[1], bbox_pt[2], bbox_pt[3])
+
+        if _has_alpha(fill) or _has_alpha(outline):
+            base = self._image
+            if base.mode != 'RGBA':
+                base = base.convert('RGBA')
+                self._image = base
+                self._draw = PIL.ImageDraw.Draw(self._image, mode='RGBA')
+
+            overlay = PIL.Image.new('RGBA', base.size, (0, 0, 0, 0))
+            ov_draw = PIL.ImageDraw.Draw(overlay, mode='RGBA')
+            try:
+                ov_draw.rounded_rectangle(bbox_pt, radius=radius_pt, fill=fill, outline=outline, width=width_pt)
+            except Exception:
+                ov_draw.rectangle(bbox_pt, fill=fill, outline=outline, width=width_pt)
+            self._image.paste(overlay, (0, 0), overlay)
+            return
+
+        # Opaque draw directly
+        try:
+            self._draw.rounded_rectangle(bbox_pt, radius=radius_pt, fill=fill, outline=outline, width=width_pt)
+        except Exception:
+            self._draw.rectangle(bbox_pt, fill=fill, outline=outline, width=width_pt)
+
+    def rounded_rectangle_right(self, bbox: Tuple, radius: int, fill=None, outline=None, width: int = 1) -> None:
+        """Draw a rectangle with only the right-side corners rounded.
+
+        The left-side corners remain square so the shape looks like it
+        enters from the left. Supports alpha blending via overlay.
+        """
+        bbox_pt = Resolution.to_pt(bbox)
+        width_pt = Resolution.to_pt(width)
+        radius_pt = Resolution.to_pt(radius)
+        left, top, right, bottom = bbox_pt
+
+        # Choose target draw surface (overlay if semi-transparent)
+        use_overlay = _has_alpha(fill) or _has_alpha(outline)
+        base = self._image
+        if base.mode != 'RGBA':
+            base = base.convert('RGBA')
+            self._image = base
+            self._draw = PIL.ImageDraw.Draw(self._image, mode='RGBA')
+
+        target = self._image
+        draw = self._draw
+        overlay = None
+        if use_overlay:
+            overlay = PIL.Image.new('RGBA', base.size, (0, 0, 0, 0))
+            draw = PIL.ImageDraw.Draw(overlay, mode='RGBA')
+
+        # Build shape: left square body + right vertical body + two quarter circles
+        # Left body (square corners)
+        draw.rectangle((left, top, max(left, right - radius_pt), bottom), fill=fill, outline=outline, width=width_pt)
+        # Right vertical middle body
+        if bottom - top > 2 * radius_pt:
+            draw.rectangle((max(left, right - radius_pt), top + radius_pt, right, bottom - radius_pt), fill=fill, outline=outline, width=width_pt)
+        # Top-right quarter circle
+        tr = (right - 2 * radius_pt, top, right, top + 2 * radius_pt)
+        try:
+            draw.pieslice(tr, start=270, end=360, fill=fill, outline=outline)
+        except Exception:
+            # Fallback: small rounded rectangle
+            draw.ellipse(tr, fill=fill, outline=outline)
+        # Bottom-right quarter circle
+        br = (right - 2 * radius_pt, bottom - 2 * radius_pt, right, bottom)
+        try:
+            draw.pieslice(br, start=0, end=90, fill=fill, outline=outline)
+        except Exception:
+            draw.ellipse(br, fill=fill, outline=outline)
+
+        # Composite overlay if used
+        if overlay is not None:
+            self._image.paste(overlay, (0, 0), overlay)
 
     def paste(self, im: PIL.Image.Image, box: tuple, mask: Any = None):
         if isinstance(im, Image):
@@ -451,37 +568,46 @@ class Draw:
 
     def get_multiline_text(self, text : str, width : int, font) -> str:
         tokens = text.split(" ")
-        
-        result = ""
+
+        lines = []
+        current = ""
         for token in tokens:
-            # print(token)
-            bbox = self.textbbox(f"{result} {token}", (0,0), font)
-            if bbox.width > width:
-                result += "\n"+token
+            candidate = f"{current} {token}" if current else token
+            bbox = self.textbbox(candidate, (0, 0), font)
+            if bbox.width > width and current:
+                lines.append(current)
+                current = token
             else:
-                result = f"{result} {token}"
-        return result
+                current = candidate
+        if current:
+            lines.append(current)
+        return "\n".join(lines)
 
-class DrawDecoder:
+class DrawDecoder(DecoderBase):
     def __init__(self):
-        self._handlers = {}
+        super().__init__()
 
-    def draw(self, obj) -> PIL.Image.Image:
+    def draw(self, obj):
+        """Draw an object and yield results.
+        
+        If the handler returns a generator, yield from it.
+        Otherwise, yield the single result.
+        """
         type_ = type(obj)
-        ret = None
-        if type_ in self._handlers:
-            ret = self._handlers[type_](obj)
+        handler = self.get_handler(type_)
+        if handler is not None:
+            ret = handler(obj)
         elif hasattr(obj, '__draw__'):
             ret = obj.__draw__()
         else:
             raise ValueError(f"Unsuported Type {type_}")
-        return ret
+        
+        # Check if ret is a generator/iterator
+        if hasattr(ret, '__iter__') and not isinstance(ret, (str, bytes, PIL.Image.Image)):
+            yield from ret
+        else:
+            yield ret
 
-    def override(self, _type: type):
-        def handler(func):
-            self._handlers[_type] = func
-            return func
-        return handler
 
     @property
     def dpi(self) -> int:

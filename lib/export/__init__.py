@@ -9,18 +9,18 @@ Key components:
     - ExporterRegistry: Central registry and factory for exporters
     - ExportFormat: Enumeration of supported export formats
     - ExportContext: Data container with calendar, settings, and output info
-    - CalendarType: Enumeration for wall vs desk calendar types
+    - DataType: Enumeration for export data types
 
 Example usage:
     ```python
-    from lib.export import ExporterRegistry, ExportFormat, ExportContext, CalendarType
+    from lib.export import ExporterRegistry, ExportFormat, ExportContext, DataType
     from lib.pycal import Calendar
     from lib.gui.settings import Settings
     
     # Create export context
     context = ExportContext(
         calendar=my_calendar,
-        calendar_type=CalendarType.WALL,
+        data_type=DataType.WALL,
         format=ExportFormat.PNG,
         output_dir="/path/to/output"
     )
@@ -36,18 +36,19 @@ from lib.export.exporters import (
     ExporterRegistry,
     ExportFormat,
     ExportContext,
-    CalendarType,
+    DataType,
     ExportResult,
 )
 
 # Import exporters to auto-register them
 import lib.export.png_exporter  # noqa: F401
+import lib.export.json_exporter  # noqa: F401
 
 __all__ = [
     'BaseExporter',
     'ExporterRegistry',
     'ExportFormat',
     'ExportContext',
-    'CalendarType',
+    'DataType',
     'ExportResult',
 ]
