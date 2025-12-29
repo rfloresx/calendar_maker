@@ -70,6 +70,11 @@ Development notes
 - The editor supports template variables in artwork descriptions for dynamic content generation.
 - Place overrides are saved per-image and persist across sessions.
 
+Licensing
+- Code: MIT License (see `LICENSE`).
+- Bundled fonts: remain under their original licenses — Arimo (Apache-2.0), Roboto (SIL OFL 1.1), EB Garamond (SIL OFL 1.1). See `NOTICE` and respective license files under `lib/print/fonts/*`.
+- Assets: Project-owned images/CSS in `lib/resources/` are covered by the project license unless otherwise noted.
+
 Troubleshooting
 - wxPython on macOS: If installation fails, ensure you’re using a python.org or Homebrew Python and have proper Xcode Command Line Tools installed.
 - Output paths: Exports write under `tmp/` inside your project root; clear or delete subfolders if regenerating.

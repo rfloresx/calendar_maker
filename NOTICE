@@ -1,0 +1,20 @@
+Third-Party Notices
+
+This project bundles the following third-party fonts and assets which remain under their original licenses:
+
+- Arimo font — Apache License 2.0
+  Path: lib/print/fonts/Arimo/
+  License: lib/print/fonts/Arimo/LICENSE.txt
+
+- Roboto font — SIL Open Font License (OFL) 1.1
+  Path: lib/print/fonts/Roboto/
+  License: lib/print/fonts/Roboto/OFL.txt
+
+- EB Garamond font — SIL Open Font License (OFL) 1.1
+  Path: lib/print/fonts/EB_Garamond/
+  License: lib/print/fonts/EB_Garamond/OFL.txt
+
+Notes
+- Project source code is licensed under the MIT License (see LICENSE).
+- Project-owned images and CSS under lib/resources/ are covered by the project license unless marked otherwise.
+- If distributing binaries or packaged assets, retain the above font licenses and attributions.
