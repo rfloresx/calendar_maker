@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calendar-maker"
+version = "1.0.0"
+description = "Lightweight calendar editor and exporter for creating printable wall and desk calendars"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Roberto Flores" },
+]
+keywords = ["calendar", "editor", "exporter", "wall-calendar", "desk-calendar"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Office/Business",
+]
+
+dependencies = [
+    "Pillow==10.1.0",
+    "holidays==0.63",
+    "piexif==1.1.3",
+    "ephem==4.1.6",
+]
+
+[project.optional-dependencies]
+desktop = [
+    "wxpython==4.2.2",
+]
+web = [
+    "nicegui==2.9.1",
+]
+dev = [
+    "wxpython==4.2.2",
+    "nicegui==2.9.1",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+calendar-maker = "main:main"
+calendar-maker-web = "main_web:main"
+
+[project.urls]
+Repository = "https://github.com/rflores/calendar_maker"
+
+[tool.setuptools.packages.find]
+include = ["lib*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
