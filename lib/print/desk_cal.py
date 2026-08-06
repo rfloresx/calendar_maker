@@ -153,11 +153,11 @@ def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image:
     text in the info area on the right. Returns a PIL.Image instance ready
     for saving or preview.
     """
-    image_path = FilesManager.instance().get_file_path(self.image)
-
     if True:
         page = DeskCalendarPage()
-        page.set_image(image_path)
+        if self.image:
+            image_path = FilesManager.instance().get_file_path(self.image)
+            page.set_image(image_path)
         draw = _libdraw.Draw(page.page)
 
         center = DeskCalSize.info_bbox().center
@@ -176,10 +176,11 @@ def DrawArtPage(self: _libcal.CalendarArt) -> PIL.Image.Image:
     The artwork fills the left side image area while a small title is drawn
     on the right info area. Returns a PIL.Image instance.
     """
-    image_path = FilesManager.instance().get_file_path(self.image)
     if True:
         page = DeskCalendarPage()
-        page.set_image(image_path)
+        if self.image:
+            image_path = FilesManager.instance().get_file_path(self.image)
+            page.set_image(image_path)
         """
         info:
             width: 3

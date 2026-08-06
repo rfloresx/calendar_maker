@@ -1,5 +1,5 @@
 from pathlib import Path
-from lib.template import get_image_metadata, ImageInfo, TextTemplate, build_text_context
+from lib.image_utils import get_image_metadata, ImageInfo, TextTemplate, build_text_context
 
 from typing import Dict, Any, List
 

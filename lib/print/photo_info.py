@@ -124,6 +124,8 @@ class ImageLayout:
 @ImageDrawer.override(_pyimg.BaseArt)
 def DrawImage(self: _pyimg.BaseArt) -> PIL.Image.Image:
     """Draw the photo image into the given box."""
+    if not self.image:
+        return None
     image_path = FilesManager.instance().get_file_path(self.image)
     image = ImageLayout(PIL.Image.open(image_path))
 

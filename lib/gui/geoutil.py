@@ -15,12 +15,41 @@ so the googlemaps client can authenticate requests.
 
 import os
 import time
+import logging
 import googlemaps
 import re
 from typing import List, Dict, Tuple
 
+logger = logging.getLogger(__name__)
+
 _API_KEY = os.environ.get("GOOGLE_API_KEY", "")
-_gmaps = googlemaps.Client(key=_API_KEY)
+logger.info(f"[GEOUTIL] Initializing with API key: {'***' + _API_KEY[-4:] if len(_API_KEY) > 4 else '(empty/not set)'}")
+
+_gmaps = None
+
+
+def _get_gmaps_client():
+    """Lazily initialize the Google Maps client."""
+    global _gmaps
+    if _gmaps is None:
+        key = os.environ.get("GOOGLE_API_KEY", "")
+        if not key:
+            # Try loading from DB config
+            try:
+                from lib.web.database import get_db, get_config
+                db = get_db()
+                try:
+                    key = get_config(db, "GOOGLE_API_KEY")
+                finally:
+                    db.close()
+            except Exception:
+                pass
+        if not key:
+            logger.warning("[GEOUTIL] No GOOGLE_API_KEY configured — Places API calls will fail")
+            return None
+        logger.info(f"[GEOUTIL] Creating Google Maps client with key: ***{key[-4:]}")
+        _gmaps = googlemaps.Client(key=key)
+    return _gmaps
 
 
 def _get_nearby_places(lat: float, lng: float, radius: int = 1000, keyword: str = None, place_type: str = None, max_results: int = 60):
@@ -51,23 +80,40 @@ def _get_nearby_places(lat: float, lng: float, radius: int = 1000, keyword: str 
       configured with a valid API key via the GOOGLE_API_KEY environment
       variable.
     """
+    logger.info(f"[GEOUTIL] API request: lat={lat}, lng={lng}, radius={radius}, keyword={keyword}, type={place_type}, max={max_results}")
     location = (lat, lng)
     results = []
 
-    # initial request
-    response: dict = _gmaps.places_nearby(location=location,
-                                          radius=radius,
-                                          keyword=keyword,
-                                          open_now=False,
-                                          type=place_type)
-    results.extend(response.get("results", []))
+    try:
+        client = _get_gmaps_client()
+        if client is None:
+            logger.warning("[GEOUTIL] No Google Maps client available, returning empty results")
+            return []
 
-    # follow next_page_token if present (may need a short delay)
-    while "next_page_token" in response and len(results) < max_results:
-        time.sleep(2)  # token becomes valid after a short delay
-        response = _gmaps.places_nearby(page_token=response["next_page_token"])
+        # initial request
+        response: dict = client.places_nearby(location=location,
+                                              radius=radius,
+                                              keyword=keyword,
+                                              open_now=False,
+                                              type=place_type)
         results.extend(response.get("results", []))
+        logger.info(f"[GEOUTIL] Initial response: {len(response.get('results', []))} results, status={response.get('status', 'unknown')}")
 
+        # follow next_page_token if present (may need a short delay)
+        while "next_page_token" in response and len(results) < max_results:
+            try:
+                time.sleep(2)  # token becomes valid after a short delay
+                response = client.places_nearby(page_token=response["next_page_token"])
+                results.extend(response.get("results", []))
+                logger.info(f"[GEOUTIL] Pagination: total {len(results)} results so far")
+            except Exception as page_err:
+                logger.warning(f"[GEOUTIL] Pagination error (keeping {len(results)} results already fetched): {page_err}")
+                break
+    except Exception as e:
+        logger.error(f"[GEOUTIL] API error: {type(e).__name__}: {e}")
+        return []
+
+    logger.info(f"[GEOUTIL] Returning {len(results[:max_results])} results")
     return results[:max_results]
 
 
@@ -191,8 +237,12 @@ class GeoUtil:
         - filename: path to the JSON file to write.
         """
         import json
-        with open(filename, "w") as f:
-            json.dump(self.cache, f)
+        try:
+            os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
+            with open(filename, "w") as f:
+                json.dump(self.cache, f)
+        except Exception as e:
+            logger.warning(f"[GEOUTIL] Failed to save cache to {filename}: {e}")
 
     def load_cache(self, filename: str):
         """Load cache contents from a JSON file if it exists.
@@ -205,6 +255,9 @@ class GeoUtil:
         if os.path.exists(filename):
             with open(filename, "r") as f:
                 self.cache = json.load(f)
+            logger.info(f"[GEOUTIL] Loaded cache from {filename}: {len(self.cache)} entries")
+        else:
+            logger.info(f"[GEOUTIL] No cache file at {filename}, starting empty")
 
     def get_nearby_places(self, lat: float, lng: float, radius: int = 10000, place_type: str = 'point_of_interest', keyword: str = None, max_results: int = 60) -> List['PlaceInfo']:
         """Get nearby places using the cache when possible.
@@ -229,16 +282,20 @@ class GeoUtil:
         cache_key = ';'.join(map(str, key_obj))
         if cache_key in self.cache:
             places = self.cache[cache_key]
+            logger.info(f"[GEOUTIL] Cache HIT for key={cache_key[:40]}... ({len(places)} places)")
         else:
+            logger.info(f"[GEOUTIL] Cache MISS for key={cache_key[:40]}... calling API")
             # call module-level function with explicit keyword args to avoid parameter-order bugs
             places = _get_nearby_places(
                 lat, lng, radius=radius, keyword=keyword, place_type=place_type, max_results=max_results)
             self.cache[cache_key] = places
             self.save_cache(self.filename)
+            logger.info(f"[GEOUTIL] Cached {len(places)} places, saved to {self.filename}")
 
         places_info = [PlaceInfo(place) for place in places]
         # Sort places by distance from the query point
         places_info.sort(key=lambda p: (p.location[0]-lat)**2 + (p.location[1]-lng)**2)
+        logger.info(f"[GEOUTIL] Returning {len(places_info)} PlaceInfo objects for ({lat}, {lng})")
         return places_info
 
     def clear_cache(self):
@@ -261,5 +318,6 @@ def get_singleton_geo_util(filename: str = "cache/geoutil_cache.json") -> GeoUti
     """Return the singleton instance of the geo utility."""
     global _singleton_geo_util
     if _singleton_geo_util is None:
+        logger.info(f"[GEOUTIL] Creating singleton GeoUtil with cache file: {filename}")
         _singleton_geo_util = GeoUtil(filename=filename)
     return _singleton_geo_util

@@ -104,16 +104,15 @@ class CalendarPageLayout(CalendarPageLayoutBase, WallCalPage):
 @ImageDrawer.override(_libcal.FrontPage)
 def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image.Image:
     """Render a lib.pycal.FrontPage into a PIL Image using the FrontPageLayout."""
-    image_path = FilesManager.instance().get_file_path(self.image)
-    font = _libdraw.Font(_libdraw.fonts.EBGaramond_Bold, 48)
-
     page = FrontPageLayout(color="black")
     draw = _libdraw.Draw(page.page)
-
     draw.rectangle(page.main_bbox(), fill='black', width=0)
 
-    page.draw_image(image_path, page.image_bbox())
+    if self.image:
+        image_path = FilesManager.instance().get_file_path(self.image)
+        page.draw_image(image_path, page.image_bbox())
 
+    font = _libdraw.Font(_libdraw.fonts.EBGaramond_Bold, 48)
     draw.text(self.title, page.title_bbox().center, font,
               anchor='mm', fill='white', align='center')
 
@@ -123,15 +122,15 @@ def DrawFrontPage(self: _libcal.FrontPage) -> PIL.Image.Image:
 @ImageDrawer.override(_libcal.CalendarArt)
 def DrawCalendarArt(self: _libcal.CalendarArt) -> PIL.Image.Image:
     """Render a lib.pycal.CalendarArt into a PIL Image using ArtPageLayout."""
-    image_path = FilesManager.instance().get_file_path(self.image)
-    font = _libdraw.Font(_libdraw.fonts.Roboto, 14)
-
     page = ArtPageLayout(color='white')
     draw = _libdraw.Draw(page.page)
-
     draw.rectangle(page.main_bbox(), fill='white', width=0)
 
-    page.draw_image(image_path, page.image_bbox())
+    if self.image:
+        image_path = FilesManager.instance().get_file_path(self.image)
+        page.draw_image(image_path, page.image_bbox())
+
+    font = _libdraw.Font(_libdraw.fonts.Roboto, 14)
 
     pos = page.info_bbox()
 

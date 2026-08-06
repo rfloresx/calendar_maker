@@ -15,5 +15,5 @@ import lib.pycal as pycal
 try:
     import lib.gui.editor as editor
 except ImportError:
-    # wxPython not available (e.g., running the web GUI only)
+    # wxPython may not be available (e.g., in web-only deployments)
     editor = None
