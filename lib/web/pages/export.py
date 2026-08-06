@@ -200,23 +200,35 @@ def export_page(project_id: str):
     db = get_db()
     try:
         project = db.query(Project).filter_by(id=project_id).first()
+        project_type = getattr(project, 'project_type', 'wall') or 'wall'
         settings = get_or_create_export_settings(db, project_id)
-        current_type = settings.calendar_type or "wall"
         current_format = settings.format or "png"
         current_exporter = settings.exporter_name or "default"
         saved_options = settings.options_dict
     finally:
         db.close()
 
+    # Determine available data types based on project type
+    if project_type == "wall":
+        available_types = ["wall", "birthdays"]
+        default_type = "wall"
+    elif project_type == "desk":
+        available_types = ["desk", "birthdays"]
+        default_type = "desk"
+    else:  # photos
+        available_types = ["photos"]
+        default_type = "photos"
+
+    current_type = default_type
+
     with ui.column().classes("w-full p-6 max-w-3xl"):
         ui.label("Export").classes("text-2xl font-bold mb-4")
 
-        # Calendar type selector
-        data_types = ["wall", "desk", "photos", "birthdays"]
+        # Calendar type selector — filtered by project type
         type_select = ui.select(
-            data_types,
+            available_types,
             value=current_type,
-            label="Calendar Type",
+            label="Export Data",
         ).classes("w-full mb-4")
 
         # Format selector
